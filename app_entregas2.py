@@ -25,11 +25,12 @@ st.markdown("""
     .block-container {padding: 10px !important;}
     #MainMenu {visibility: hidden;} footer {visibility: hidden;} header {visibility: hidden;}
     .stButton>button {width: 100% !important; height: 60px !important; font-size: 18px !important; font-weight: bold !important; border-radius: 12px !important;}
+    .stDownloadButton>button {background-color: #28a745 !important; color: white !important; width: 100% !important; height: 60px !important; border-radius: 12px !important; margin-top: 10px;}
     </style>
 """, unsafe_allow_html=True)
 
 # =================================================================
-# 2. MEMÓRIA DO SISTEMA
+# 2. MEMÓRIA DO SISTEMA (AUTO-SAVE)
 # =================================================================
 FILE_SAVE = "progresso_entrega.json"
 
@@ -58,11 +59,12 @@ def carregar_progresso():
         except: return False
     return False
 
+# Carregar save ao abrir
 if not st.session_state.pontos_carregados:
     carregar_progresso()
 
 # =================================================================
-# 3. INTERFACE DE CONFIGURAÇÃO
+# 3. INTERFACE DE CONFIGURAÇÃO E RELATÓRIO
 # =================================================================
 st.title("🚚 GPS Entregador Pro")
 
@@ -95,11 +97,28 @@ with st.expander("⚙️ CONFIGURAR / RELATÓRIO", expanded=not st.session_state
         st.session_state.entregues = set()
         st.rerun()
 
+    # --- BOTÃO DE RELATÓRIO (RESTAURADO) ---
+    if st.session_state.entregues:
+        st.markdown("---")
+        st.subheader("📊 Relatório de Hoje")
+        data_hoje = datetime.now().strftime("%d/%m/%Y")
+        relat_txt = f"RELATÓRIO DE ENTREGAS - {data_hoje}\n"
+        relat_txt += f"Total Concluído: {len(st.session_state.entregues)} de {len(st.session_state.pontos_carregados)}\n\n"
+        for q in sorted(list(st.session_state.entregues)):
+            relat_txt += f"- {q}\n"
+        
+        st.download_button(
+            label="📥 BAIXAR RELATÓRIO TXT",
+            data=relat_txt,
+            file_name=f"entregas_{datetime.now().strftime('%Y-%m-%d')}.txt",
+            mime="text/plain"
+        )
+
 # =================================================================
-# 4. MAPA ESTÁVEL
+# 4. MAPA (ESTÁVEL E INTELIGENTE)
 # =================================================================
 if st.session_state.pontos_carregados:
-    # Lógica de Sugestão Próxima
+    # Lógica de Sugestão Próxima (Matemática)
     proximo_ideal = None
     faltam = [n for n in st.session_state.pontos_carregados if n not in st.session_state.entregues]
     if st.session_state.ultima_pos and faltam:
@@ -111,23 +130,18 @@ if st.session_state.pontos_carregados:
                 menor_dist = d
                 proximo_ideal = n
 
-    # DEFINE O CENTRO DO MAPA:
-    # Ao carregar, ele foca na PRÓXIMA entrega (a laranja). 
-    # Isso evita que o mapa fique pulando para o início ou para longe.
-    if proximo_ideal:
-        centro_mapa = st.session_state.pontos_carregados[proximo_ideal]
-    else:
-        centro_mapa = st.session_state.ultima_pos
+    # Define o centro do mapa na próxima entrega para não pular longe
+    centro_mapa = st.session_state.pontos_carregados[proximo_ideal] if proximo_ideal else st.session_state.ultima_pos
 
     m = folium.Map(location=centro_mapa, zoom_start=16)
-    
-    # LocateControl com fly_to=False para não roubar a câmera sozinho
     LocateControl(auto_start=False, fly_to=False).add_to(m)
 
     for nome, coords in st.session_state.pontos_carregados.items():
         num = re.findall(r'\d+', nome)[0] if re.findall(r'\d+', nome) else "?"
         status = nome in st.session_state.entregues
         sugerido = (nome == proximo_ideal)
+        
+        # Cores dos Pinos
         cor = "#28a745" if status else ("#fd7e14" if sugerido else "#dc3545")
         
         icon_html = f"""<div style="background-color:{cor}; width:30px; height:30px; border-radius:50%; display:flex; 
@@ -136,9 +150,7 @@ if st.session_state.pontos_carregados:
                         {'✔' if status else num}</div>"""
         folium.Marker(location=coords, popup=nome, icon=folium.DivIcon(html=icon_html)).add_to(m)
 
-    # --- O SEGREDO ANTI-LOOP ---
-    # Só pedimos para o mapa nos avisar o que foi CLICADO. 
-    # Ignoramos o movimento do mapa (center/zoom), assim ele NÃO atualiza sozinho.
+    # st_folium configurado para evitar o loop infinito
     map_data = st_folium(
         m, 
         use_container_width=True, 
@@ -146,7 +158,6 @@ if st.session_state.pontos_carregados:
         returned_objects=["last_object_clicked_popup"]
     )
 
-    # Só dá rerun se você clicar em uma bolinha diferente
     if map_data.get("last_object_clicked_popup"):
         if st.session_state.ponto_clicado != map_data["last_object_clicked_popup"]:
             st.session_state.ponto_clicado = map_data["last_object_clicked_popup"]
@@ -165,10 +176,14 @@ if st.session_state.pontos_carregados:
                 if st.button("✅ FEITO"):
                     st.session_state.entregues.add(nome_sel)
                     st.session_state.ultima_pos = st.session_state.pontos_carregados[nome_sel]
-                    st.session_state.ponto_clicado = None # Limpa para a próxima
+                    st.session_state.ponto_clicado = None 
                     salvar_progresso()
                     st.rerun()
-            else: st.success("Concluído!")
+            else: st.success("Entregue! ✔️")
 
     if proximo_ideal: st.warning(f"💡 Sugestão Próxima: **{proximo_ideal}**")
-    st.write(f"📊 {len(st.session_state.entregues)} de {len(st.session_state.pontos_carregados)} concluídas")
+    
+    # Barra de Progresso
+    feitos, total = len(st.session_state.entregues), len(st.session_state.pontos_carregados)
+    st.progress(feitos/total if total > 0 else 0)
+    st.write(f"📊 {feitos} de {total} concluídas")
