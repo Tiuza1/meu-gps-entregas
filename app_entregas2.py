@@ -34,16 +34,14 @@ if 'pontos_carregados' not in st.session_state: st.session_state.pontos_carregad
 if 'entregues' not in st.session_state: st.session_state.entregues = set()
 if 'ultima_pos' not in st.session_state: st.session_state.ultima_pos = None
 if 'ponto_clicado' not in st.session_state: st.session_state.ponto_clicado = None
-if 'map_center' not in st.session_state: st.session_state.map_center = None
-if 'map_zoom' not in st.session_state: st.session_state.map_zoom = 16
+if 'centro_mapa' not in st.session_state: st.session_state.centro_mapa = None
 
 def salvar_progresso():
     dados = {
         "pontos_carregados": st.session_state.pontos_carregados,
         "entregues": list(st.session_state.entregues),
         "ultima_pos": st.session_state.ultima_pos,
-        "map_center": st.session_state.map_center,
-        "map_zoom": st.session_state.map_zoom
+        "centro_mapa": st.session_state.centro_mapa
     }
     with open(FILE_SAVE, "w") as f: json.dump(dados, f)
 
@@ -55,13 +53,11 @@ def carregar_progresso():
                 st.session_state.pontos_carregados = d["pontos_carregados"]
                 st.session_state.entregues = set(d["entregues"])
                 st.session_state.ultima_pos = tuple(d["ultima_pos"]) if d["ultima_pos"] else None
-                st.session_state.map_center = d.get("map_center")
-                st.session_state.map_zoom = d.get("map_zoom", 16)
+                st.session_state.centro_mapa = d.get("centro_mapa")
                 return True
         except: return False
     return False
 
-# Tenta carregar o save automaticamente
 if not st.session_state.pontos_carregados:
     carregar_progresso()
 
@@ -86,7 +82,7 @@ with st.expander("⚙️ CONFIGURAR / RELATÓRIO", expanded=not st.session_state
         if geo:
             pos = (geo[0]['geometry']['location']['lat'], geo[0]['geometry']['location']['lng'])
             st.session_state.ultima_pos = pos
-            st.session_state.map_center = pos
+            st.session_state.centro_mapa = pos
             st.session_state.pontos_carregados = {s: banco_total[s] for s in selecionados}
             st.session_state.entregues = set()
             salvar_progresso()
@@ -96,18 +92,17 @@ with st.expander("⚙️ CONFIGURAR / RELATÓRIO", expanded=not st.session_state
         if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
         st.session_state.pontos_carregados = {}
         st.session_state.entregues = set()
-        st.session_state.map_center = None
+        st.session_state.centro_mapa = None
         st.rerun()
 
-    # --- BOTÃO DE RELATÓRIO ---
     if st.session_state.entregues:
         st.markdown("---")
         data_hoje = datetime.now().strftime("%d/%m/%Y")
         relat = f"RELATÓRIO DE ENTREGAS - {data_hoje}\nTotal: {len(st.session_state.entregues)}\n\n"
         for q in sorted(list(st.session_state.entregues)): relat += f"- {q}\n"
-        st.download_button(label="📥 BAIXAR RELATÓRIO TXT", data=relat, file_name=f"entregas_{datetime.now().strftime('%Y-%m-%d')}.txt")
+        st.download_button(label="📥 BAIXAR RELATÓRIO", data=relat, file_name=f"entregas_{datetime.now().strftime('%Y-%m-%d')}.txt")
 
-# --- LÓGICA DE SUGESTÃO (MATEMÁTICA) ---
+# --- LÓGICA DE SUGESTÃO ---
 proximo_ideal = None
 faltam = [n for n in st.session_state.pontos_carregados if n not in st.session_state.entregues]
 if st.session_state.ultima_pos and faltam:
@@ -119,19 +114,19 @@ if st.session_state.ultima_pos and faltam:
             menor_dist = d
             proximo_ideal = n
 
-# --- MAPA ---
+# --- MAPA (VERSÃO SEM PISCA-PISCA) ---
 if st.session_state.pontos_carregados:
-    posicao_abertura = st.session_state.map_center if st.session_state.map_center else st.session_state.ultima_pos
+    # Define o local onde o mapa vai abrir. 
+    # Ele SÓ muda se você clicar em INICIAR ou FEITO.
+    posicao_focal = st.session_state.centro_mapa if st.session_state.centro_mapa else st.session_state.ultima_pos
 
-    m = folium.Map(location=posicao_abertura, zoom_start=st.session_state.map_zoom)
+    m = folium.Map(location=posicao_focal, zoom_start=16)
     LocateControl(auto_start=False, fly_to=False).add_to(m)
 
     for nome, coords in st.session_state.pontos_carregados.items():
         num = re.findall(r'\d+', nome)[0] if re.findall(r'\d+', nome) else "?"
         status = nome in st.session_state.entregues
         sugerido = (nome == proximo_ideal)
-        
-        # CORES: Verde (Entregue), Laranja (Sugestão), Vermelho (Pendente)
         cor = "#28a745" if status else ("#fd7e14" if sugerido else "#dc3545")
         
         icon_html = f"""<div style="background-color:{cor}; width:30px; height:30px; border-radius:50%; display:flex; 
@@ -140,17 +135,20 @@ if st.session_state.pontos_carregados:
                         {'✔' if status else num}</div>"""
         folium.Marker(location=coords, popup=nome, icon=folium.DivIcon(html=icon_html)).add_to(m)
 
-    # Captura o mapa e os movimentos que você faz nele
-    map_data = st_folium(m, use_container_width=True, height=450)
-
-    # SALVA O ZOOM E A POSIÇÃO PARA NÃO PULAR NO RERUN
-    if map_data.get("center"):
-        st.session_state.map_center = [map_data["center"]["lat"], map_data["center"]["lng"]]
-    if map_data.get("zoom"):
-        st.session_state.map_zoom = map_data["zoom"]
+    # O SEGREDO: returned_objects vazio impede o mapa de ficar mandando dados de movimento pro Python.
+    # Ele só vai mandar o dado de quando você CLICAR no marcador.
+    map_data = st_folium(
+        m, 
+        use_container_width=True, 
+        height=450,
+        key="mapa_estavel",
+        returned_objects=["last_object_clicked_popup"]
+    )
 
     if map_data.get("last_object_clicked_popup"):
-        st.session_state.ponto_clicado = map_data["last_object_clicked_popup"]
+        if st.session_state.ponto_clicado != map_data["last_object_clicked_popup"]:
+            st.session_state.ponto_clicado = map_data["last_object_clicked_popup"]
+            st.rerun()
 
     if st.session_state.ponto_clicado:
         nome_sel = st.session_state.ponto_clicado
@@ -164,9 +162,11 @@ if st.session_state.pontos_carregados:
                 if st.button("✅ FEITO"):
                     st.session_state.entregues.add(nome_sel)
                     st.session_state.ultima_pos = st.session_state.pontos_carregados[nome_sel]
-                    salvar_progresso()
+                    # Atualiza o centro para a próxima entrega para o mapa não pular pra longe
+                    st.session_state.centro_mapa = st.session_state.pontos_carregados[nome_sel]
                     st.session_state.ponto_clicado = None
-                    st.rerun() 
+                    salvar_progresso()
+                    st.rerun()
             else: st.success("Concluído!")
 
     if proximo_ideal:
