@@ -169,7 +169,7 @@ if st.session_state.ponto_clicado:
         with c_done:
             id_p = next((pid for pid in info_q['pacotes'] if pid not in st.session_state.entregues_id), None)
             if id_p:
-                if st.button("✅ ENTREGAR"):
+                if st.button("✅ ENTREGAR", type="primary"):
                     st.session_state.entregues_id.append(id_p)
                     st.session_state.ultima_pos = info_q['coords']
                     if sum(1 for pid in info_q['pacotes'] if pid in st.session_state.entregues_id) == t_p:
@@ -196,5 +196,7 @@ with st.expander("⚙️ Opções do Sistema e Relatórios"):
     
     if st.button("🗑️ ZERAR APLICATIVO"):
         if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
-        st.session_state.lista_pacotes = []
-        st.session_state.entregues_id =
+        st.session_state.lista_pacotes =[]
+        st.session_state.entregues_id =[]
+        st.session_state.ponto_clicado = None
+        st.rerun()
