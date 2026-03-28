@@ -16,12 +16,11 @@ try:
 except:
     st.error("Chave de API inválida.")
 
-# --- CSS SEGURO (Otimizado para Celular sem quebrar a tela) ---
+# --- CSS SEGURO (Otimizado para Celular) ---
 st.set_page_config(page_title="GPS Multi-Pacotes", layout="wide")
 
 st.markdown("""
     <style>
-    /* Remove margens e lixo visual */
     .block-container {padding: 10px 5px !important;}
     #MainMenu {visibility: hidden;} footer {visibility: hidden;} header {visibility: hidden;}
     
@@ -31,19 +30,13 @@ st.markdown("""
     
     /* Botões robustos e fáceis de clicar */
     .stButton>button {
-        width: 100% !important;
-        height: 55px !important;
-        font-size: 18px !important;
-        font-weight: bold !important;
-        border-radius: 10px !important;
-        background-color: #007BFF;
-        color: white;
+        width: 100% !important; height: 55px !important; font-size: 18px !important;
+        font-weight: bold !important; border-radius: 10px !important;
     }
-    .stButton>button:hover { background-color: #0056b3; color: white; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- MEMÓRIA DO APP ---
+# --- MEMÓRIA DO APP (ANTI-PERDA DE DADOS) ---
 FILE_SAVE = "progresso_final.json"
 
 if 'lista_pacotes' not in st.session_state: st.session_state.lista_pacotes =[]
@@ -126,13 +119,11 @@ if st.session_state.lista_pacotes:
     centro = st.session_state.ultima_pos if st.session_state.ultima_pos else[-16.15, -47.96]
     m = folium.Map(location=centro, zoom_start=16, zoom_control=False)
 
-    # GPS Otimizado
     LocateControl(
         auto_start=False, fly_to=False, keep_current_zoom_level=True,
         locate_options={"enableHighAccuracy": True, "maximumAge": 1000}
     ).add_to(m)
 
-    # Marcadores
     for nome, info in quadras_agrupadas.items():
         t_p = len(info['pacotes'])
         f_p = sum(1 for pid in info['pacotes'] if pid in st.session_state.entregues_id)
@@ -141,7 +132,6 @@ if st.session_state.lista_pacotes:
         num = re.findall(r'\d+', nome)[0] if re.findall(r'\d+', nome) else nome[:2]
         cor = "#28a745" if concluido else ("#fd7e14" if nome == proximo_ideal else "#dc3545")
         
-        # Borda azul e texto "x2" se tiver mais de um pacote
         borda = "4px solid #007bff" if (t_p > 1 and not concluido) else "2px solid white"
         txt = "✔" if concluido else (f"{num}<br><span style='font-size:10px;'>x{t_p}</span>" if t_p > 1 else num)
         
@@ -151,8 +141,7 @@ if st.session_state.lista_pacotes:
                         {txt}</div>"""
         folium.Marker(location=info['coords'], popup=nome, icon=folium.DivIcon(html=icon_html)).add_to(m)
 
-    # Altura de 550px é o ideal para o mapa preencher a tela do celular sem esconder os botões embaixo
-    map_data = st_folium(m, use_container_width=True, height=550, key="mapa_estavel", returned_objects=["last_object_clicked_popup"])
+    map_data = st_folium(m, use_container_width=True, height=520, key="mapa_estavel", returned_objects=["last_object_clicked_popup"])
 
     if map_data.get("last_object_clicked_popup"):
         if st.session_state.ponto_clicado != map_data["last_object_clicked_popup"]:
@@ -180,12 +169,11 @@ if st.session_state.ponto_clicado:
         with c_done:
             id_p = next((pid for pid in info_q['pacotes'] if pid not in st.session_state.entregues_id), None)
             if id_p:
-                if st.button("✅ ENTREGAR", type="primary"):
+                if st.button("✅ ENTREGAR"):
                     st.session_state.entregues_id.append(id_p)
                     st.session_state.ultima_pos = info_q['coords']
-                    st.session_state.ponto_clicado = None # Fecha o card ao concluir a quadra toda ou deixa aberto se faltar?
                     if sum(1 for pid in info_q['pacotes'] if pid in st.session_state.entregues_id) == t_p:
-                        st.session_state.ponto_clicado = None # Limpa se entregou tudo
+                        st.session_state.ponto_clicado = None 
                     salvar_progresso()
                     st.rerun()
             else:
@@ -197,11 +185,16 @@ elif not st.session_state.lista_pacotes:
     st.info("👆 Use o buscador acima para adicionar pacotes ao mapa.")
 
 # =================================================================
-# 5. MENU INFERIOR DE LIMPEZA
+# 5. MENU INFERIOR (CONFIGURAÇÕES E LIMPEZA)
 # =================================================================
 st.markdown("---")
-with st.expander("Opções do Sistema"):
+with st.expander("⚙️ Opções do Sistema e Relatórios"):
+    if st.session_state.entregues_id:
+        data_h = datetime.now().strftime("%d/%m/%Y")
+        relat = f"RELATÓRIO: {data_h}\nPacotes Entregues: {len(st.session_state.entregues_id)}\n\n"
+        st.download_button("📥 BAIXAR RELATÓRIO DO DIA", data=relat, file_name=f"entregas_{datetime.now().strftime('%Y-%m-%d')}.txt")
+    
     if st.button("🗑️ ZERAR APLICATIVO"):
         if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
-        st.session_state.lista_pacotes =[]
+        st.session_state.lista_pacotes = []
         st.session_state.entregues_id =
