@@ -25,8 +25,7 @@ st.set_page_config(page_title="GPS Multi-Pacotes", layout="wide", initial_sideba
 
 st.markdown("""
     <style>
-    /* Oculta a barra preta e lixo visual do Streamlit */
-    [data-testid="stHeader"] { background-color: transparent !important; }
+    /* Oculta a barra preta e lixo visual do Streamlit */[data-testid="stHeader"] { background-color: transparent !important; }
     [data-testid="stToolbar"] { display: none !important; }
     footer { display: none !important; }
     
@@ -55,6 +54,7 @@ if 'lista_pacotes' not in st.session_state: st.session_state.lista_pacotes =[]
 if 'entregues_id' not in st.session_state: st.session_state.entregues_id =[]
 if 'ultima_pos' not in st.session_state: st.session_state.ultima_pos = None
 if 'ponto_clicado' not in st.session_state: st.session_state.ponto_clicado = None
+if 'trigger_gps' not in st.session_state: st.session_state.trigger_gps = False # <--- NOVO GATILHO
 
 def salvar_progresso():
     dados = {
@@ -104,7 +104,7 @@ with st.sidebar:
     st.markdown("---")
     if st.button("🗑️ ZERAR TUDO (Novo Dia)"):
         if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
-        st.session_state.lista_pacotes = []
+        st.session_state.lista_pacotes =[]
         st.session_state.entregues_id =[]
         st.session_state.ponto_clicado = None
         st.rerun()
@@ -137,7 +137,7 @@ quadras_agrupadas = {}
 for p in st.session_state.lista_pacotes:
     n = p['nome']
     if n not in quadras_agrupadas:
-        quadras_agrupadas[n] = {"coords": banco_total[n], "pacotes": []}
+        quadras_agrupadas[n] = {"coords": banco_total[n], "pacotes":[]}
     quadras_agrupadas[n]['pacotes'].append(p['id'])
 
 if st.session_state.ponto_clicado:
@@ -162,6 +162,8 @@ if st.session_state.ponto_clicado:
                     if sum(1 for pid in info_q['pacotes'] if pid in st.session_state.entregues_id) == t_p:
                         st.session_state.ponto_clicado = None 
                     salvar_progresso()
+                    # --- GATILHO PARA ACIONAR A BOLINHA DO GPS ---
+                    st.session_state.trigger_gps = True 
                     st.rerun()
             else:
                 st.button("Tudo Entregue!", disabled=True)
@@ -187,17 +189,23 @@ if st.session_state.ultima_pos and pendentes:
 
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else[-16.15, -47.96]
 
-# MAPA SEM BOTÕES DE ZOOM (+ / -) PARA LIMPAR A TELA (Use movimento de pinça)
 m = folium.Map(location=centro, zoom_start=16, zoom_control=False)
 
-# BOLINHA DO GPS (MOVIDA PARA O CANTO INFERIOR DIREITO)
+# --- CONFIGURAÇÃO DA BOLINHA DO GPS ---
+# Lê se o gatilho foi ativado no botão ENTREGAR
+auto_gps = st.session_state.get('trigger_gps', False)
+
 LocateControl(
     position='bottomright',
-    auto_start=False, 
-    fly_to=False, 
-    keep_current_zoom_level=True,
-    locate_options={"enableHighAccuracy": True, "maximumAge": 1000}
+    auto_start=auto_gps, # Fica True se você acabou de clicar em "Entregar"
+    fly_to=True, 
+    # maxZoom: 16 -> Impede o mapa de dar zoom no telhado da casa!
+    locate_options={"enableHighAccuracy": True, "maximumAge": 1000, "maxZoom": 16} 
 ).add_to(m)
+
+# Reseta o gatilho para ele não ficar pulando se você apenas arrastar o mapa depois
+if auto_gps:
+    st.session_state.trigger_gps = False
 
 for nome, info in quadras_agrupadas.items():
     t_p = len(info['pacotes'])
