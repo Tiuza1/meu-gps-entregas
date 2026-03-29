@@ -19,55 +19,29 @@ except:
     st.error("Chave de API inválida.")
 
 # =================================================================
-# 2. CSS AVANÇADO (MAPA DE FUNDO E CAIXAS FLUTUANTES)
+# 2. CSS ANTI-BUG (Visual Limpo e Estável)
 # =================================================================
-st.set_page_config(page_title="GPS Tela Cheia", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="GPS Multi-Pacotes", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
     <style>
-    /* Ocupar a tela inteira e esconder sobras */
-    .block-container {padding: 0 !important; max-width: 100% !important; overflow: hidden;}
-    header {background-color: transparent !important;} /* Mantém o menu lateral invisível mas clicável */
-    footer {visibility: hidden;}
+    /* Oculta a barra preta e lixo visual do Streamlit */
+    [data-testid="stHeader"] { background-color: transparent !important; }
+    [data-testid="stToolbar"] { display: none !important; }
+    footer { display: none !important; }
     
-    /* Força o iframe do mapa a ocupar 100% da altura da tela */
-    iframe {height: 100vh !important; width: 100vw !important; border: none !important;}
-
-    /* --- TRUQUE DA ÂNCORA PARA FLUTUAR A BUSCA NO TOPO --- */
-    .top-anchor { display: none; }
-    .top-anchor + div {
-        position: fixed !important;
-        top: 15px !important;
-        left: 5% !important;
-        width: 90% !important;
-        z-index: 9999 !important;
-        background: rgba(255, 255, 255, 0.95) !important;
-        padding: 10px 15px !important;
-        border-radius: 12px !important;
-        box-shadow: 0px 4px 15px rgba(0,0,0,0.3) !important;
-    }
-
-    /* --- TRUQUE DA ÂNCORA PARA FLUTUAR O BOX DE AÇÃO NA BASE --- */
-    .bottom-anchor { display: none; }
-    .bottom-anchor + div {
-        position: fixed !important;
-        bottom: 25px !important;
-        left: 5% !important;
-        width: 90% !important;
-        z-index: 9999 !important;
-        background: rgba(255, 255, 255, 0.95) !important;
-        padding: 15px !important;
-        border-radius: 15px !important;
-        box-shadow: 0px -4px 15px rgba(0,0,0,0.3) !important;
-    }
-
-    /* Esconde o 'Select All' do buscador e ajusta botões */
-    div[data-baseweb="select"][role="option"]:first-child { display: none !important; }
+    /* Remove margens e ajusta o fundo para combinar com o mapa */
+    .stApp { background-color: #f0f2f6 !important; }
+    .block-container { padding: 3rem 0.5rem 0.5rem 0.5rem !important; max-width: 100% !important; }
+    
+    /* Oculta o 'Select All' e os rótulos */
+    div[data-baseweb="select"] [role="option"]:first-child { display: none !important; }
     .stSelectbox label { display: none !important; }
     
+    /* Botões Arredondados e Grandes */
     .stButton>button {
-        width: 100% !important; height: 50px !important; font-size: 16px !important; 
-        font-weight: bold !important; border-radius: 10px !important;
+        width: 100% !important; height: 55px !important; font-size: 16px !important; 
+        font-weight: bold !important; border-radius: 12px !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -113,7 +87,7 @@ def carregar_banco():
 banco_total = carregar_banco()
 
 # =================================================================
-# 4. BARRA LATERAL (MENU DE CONFIGURAÇÕES ESCONDIDO)
+# 4. MENU LATERAL (ESCONDIDO)
 # =================================================================
 with st.sidebar:
     st.title("⚙️ Configurações")
@@ -139,29 +113,26 @@ with st.sidebar:
         st.markdown("---")
         data_h = datetime.now().strftime("%d/%m/%Y")
         relat = f"RELATÓRIO: {data_h}\nPacotes Entregues: {len(st.session_state.entregues_id)}\n"
-        st.download_button("📥 BAIXAR RELATÓRIO", data=relat, file_name=f"entregas_{datetime.now().strftime('%Y-%m-%d')}.txt")
+        st.download_button("📥 BAIXAR RELATÓRIO DO DIA", data=relat, file_name=f"entregas_{datetime.now().strftime('%Y-%m-%d')}.txt")
 
 # =================================================================
-# 5. CAIXA FLUTUANTE DO TOPO (PESQUISA)
+# 5. BARRA DE BUSCA (TOPO DA TELA)
 # =================================================================
-st.markdown('<div class="top-anchor"></div>', unsafe_allow_html=True)
-with st.container():
-    c1, c2 = st.columns([4, 1])
-    with c1:
-        busca = st.selectbox("Pesquisar", options=["(Pesquisar Quadra...)"] + list(banco_total.keys()), label_visibility="collapsed")
-    with c2:
-        if st.button("➕"):
-            if busca and busca != "(Pesquisar Quadra...)":
-                novo_id = f"{busca}_{len(st.session_state.lista_pacotes)}"
-                st.session_state.lista_pacotes.append({"id": novo_id, "nome": busca})
-                st.session_state.ultima_pos = banco_total[busca]
-                salvar_progresso()
-                st.rerun()
+c1, c2 = st.columns([4, 1])
+with c1:
+    busca = st.selectbox("Pesquisar", options=["(Adicionar Quadra...)"] + list(banco_total.keys()), label_visibility="collapsed")
+with c2:
+    if st.button("➕"):
+        if busca and busca != "(Adicionar Quadra...)":
+            novo_id = f"{busca}_{len(st.session_state.lista_pacotes)}"
+            st.session_state.lista_pacotes.append({"id": novo_id, "nome": busca})
+            st.session_state.ultima_pos = banco_total[busca]
+            salvar_progresso()
+            st.rerun()
 
 # =================================================================
-# 6. CAIXA FLUTUANTE DA BASE (AÇÃO)
+# 6. PAINEL DE AÇÃO (SÓ APARECE AO CLICAR NA QUADRA)
 # =================================================================
-# Agrupamento lógico
 quadras_agrupadas = {}
 for p in st.session_state.lista_pacotes:
     n = p['nome']
@@ -172,37 +143,35 @@ for p in st.session_state.lista_pacotes:
 if st.session_state.ponto_clicado:
     nome_sel = st.session_state.ponto_clicado
     if nome_sel in quadras_agrupadas:
-        st.markdown('<div class="bottom-anchor"></div>', unsafe_allow_html=True)
-        with st.container():
-            info_q = quadras_agrupadas[nome_sel]
-            f_p = sum(1 for pid in info_q['pacotes'] if pid in st.session_state.entregues_id)
-            t_p = len(info_q['pacotes'])
-            
-            st.markdown(f"<h4 style='margin-bottom:0px;'>📍 {nome_sel}</h4><p style='margin-top:0px; color:gray;'>Pacotes: {f_p}/{t_p}</p>", unsafe_allow_html=True)
-            
-            c_gps, c_done = st.columns(2)
-            with c_gps:
-                lat, lon = info_q['coords']
-                st.link_button("🚀 ABRIR GPS", f"https://www.google.com/maps/dir/?api=1&destination={lat},{lon}")
-            with c_done:
-                id_p = next((pid for pid in info_q['pacotes'] if pid not in st.session_state.entregues_id), None)
-                if id_p:
-                    if st.button("✅ ENTREGAR", type="primary"):
-                        st.session_state.entregues_id.append(id_p)
-                        st.session_state.ultima_pos = info_q['coords']
-                        if sum(1 for pid in info_q['pacotes'] if pid in st.session_state.entregues_id) == t_p:
-                            st.session_state.ponto_clicado = None 
-                        salvar_progresso()
-                        st.rerun()
-                else:
-                    st.success("Concluído!")
-            
-            if st.button("✖️ Fechar Aba"):
+        info_q = quadras_agrupadas[nome_sel]
+        f_p = sum(1 for pid in info_q['pacotes'] if pid in st.session_state.entregues_id)
+        t_p = len(info_q['pacotes'])
+        
+        st.info(f"**📍 Seleção: {nome_sel}** — ({f_p}/{t_p} pacotes concluídos)")
+        
+        c_gps, c_done, c_close = st.columns([2, 2, 1])
+        with c_gps:
+            lat, lon = info_q['coords']
+            st.link_button("🚀 ABRIR GPS", f"https://www.google.com/maps/dir/?api=1&destination={lat},{lon}")
+        with c_done:
+            id_p = next((pid for pid in info_q['pacotes'] if pid not in st.session_state.entregues_id), None)
+            if id_p:
+                if st.button("✅ ENTREGAR", type="primary"):
+                    st.session_state.entregues_id.append(id_p)
+                    st.session_state.ultima_pos = info_q['coords']
+                    if sum(1 for pid in info_q['pacotes'] if pid in st.session_state.entregues_id) == t_p:
+                        st.session_state.ponto_clicado = None 
+                    salvar_progresso()
+                    st.rerun()
+            else:
+                st.button("Tudo Entregue!", disabled=True)
+        with c_close:
+            if st.button("✖️"):
                 st.session_state.ponto_clicado = None
                 st.rerun()
 
 # =================================================================
-# 7. MAPA DE FUNDO EM TELA CHEIA
+# 7. MAPA PRINCIPAL
 # =================================================================
 proximo_ideal = None
 pendentes =[n for n, d in quadras_agrupadas.items() if not all(pid in st.session_state.entregues_id for pid in d['pacotes'])]
@@ -217,10 +186,16 @@ if st.session_state.ultima_pos and pendentes:
             proximo_ideal = n
 
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else[-16.15, -47.96]
+
+# MAPA SEM BOTÕES DE ZOOM (+ / -) PARA LIMPAR A TELA (Use movimento de pinça)
 m = folium.Map(location=centro, zoom_start=16, zoom_control=False)
 
+# BOLINHA DO GPS (MOVIDA PARA O CANTO INFERIOR DIREITO)
 LocateControl(
-    auto_start=False, fly_to=False, keep_current_zoom_level=True,
+    position='bottomright',
+    auto_start=False, 
+    fly_to=False, 
+    keep_current_zoom_level=True,
     locate_options={"enableHighAccuracy": True, "maximumAge": 1000}
 ).add_to(m)
 
@@ -240,9 +215,12 @@ for nome, info in quadras_agrupadas.items():
                     {txt}</div>"""
     folium.Marker(location=info['coords'], popup=nome, icon=folium.DivIcon(html=icon_html)).add_to(m)
 
-map_data = st_folium(m, use_container_width=True, height=800, key="mapa_full", returned_objects=["last_object_clicked_popup"])
+map_data = st_folium(m, use_container_width=True, height=650, key="mapa_full", returned_objects=["last_object_clicked_popup"])
 
 if map_data.get("last_object_clicked_popup"):
     if st.session_state.ponto_clicado != map_data["last_object_clicked_popup"]:
         st.session_state.ponto_clicado = map_data["last_object_clicked_popup"]
         st.rerun()
+
+if st.session_state.lista_pacotes and proximo_ideal and not st.session_state.ponto_clicado:
+    st.info(f"💡 Sugestão Próxima: **{proximo_ideal}**")
