@@ -5,13 +5,12 @@ import os
 import time
 
 # =================================================================
-# 1. CONFIGURAÇÃO E PERSISTÊNCIA
+# 1. CONFIGURAÇÃO E MEMÓRIA
 # =================================================================
 st.set_page_config(page_title="Painel do Entregador", layout="wide")
 
 FILE_SAVE = "progresso_final.json"
 
-# Inicializa as variáveis de memória
 if 'lista_pacotes' not in st.session_state: st.session_state.lista_pacotes = []
 if 'entregues_id' not in st.session_state: st.session_state.entregues_id = []
 if 'ultima_pos' not in st.session_state: st.session_state.ultima_pos = None
@@ -36,7 +35,6 @@ def salvar_progresso():
     }
     with open(FILE_SAVE, "w") as f: json.dump(dados, f)
 
-# Carrega do arquivo ao iniciar
 if not st.session_state.lista_pacotes and os.path.exists(FILE_SAVE):
     try:
         with open(FILE_SAVE, "r") as f:
@@ -47,20 +45,21 @@ if not st.session_state.lista_pacotes and os.path.exists(FILE_SAVE):
     except: pass
 
 # =================================================================
-# 2. PROCESSAR AÇÃO DE "CONCLUÍDO" (AQUI ESTÁ O SEGREDO)
+# 2. PROCESSAR AÇÃO (O QUE FAZ O BOTÃO FUNCIONAR)
 # =================================================================
-# Lemos os parâmetros da URL para saber se o usuário clicou no mapa
-query_params = st.query_params
-if "action" in query_params and "id" in query_params:
-    item_id = query_params["id"]
-    if query_params["action"] == "done":
+# Pegamos os parâmetros da URL
+params = st.query_params
+if "action" in params and "id" in params:
+    item_id = str(params["id"])
+    if params["action"] == "done":
         if item_id not in st.session_state.entregues_id:
             st.session_state.entregues_id.append(item_id)
-            # Centraliza no último entregue
+            # Achar localização para centralizar o mapa
             p = next((x for x in st.session_state.lista_pacotes if x['id'] == item_id), None)
             if p: st.session_state.ultima_pos = (p.get('lat'), p.get('lng'))
             salvar_progresso()
-    # Limpa a URL e recarrega a página limpa
+    
+    # LIMPA A URL E RECARREGA (Importante para não bugar a interface)
     st.query_params.clear()
     st.rerun()
 
@@ -69,13 +68,7 @@ if "action" in query_params and "id" in query_params:
 # =================================================================
 st.markdown("""
     <style>
-    .stButton>button { border-radius: 12px; height: 3rem; font-weight: bold; width: 100%; background-color: #333; color: white; }
-    .btn-done-map {
-        background-color: #28a745; color: white; padding: 12px;
-        text-decoration: none; border-radius: 8px; display: block;
-        font-weight: bold; text-align: center; margin-top: 10px;
-        font-family: sans-serif; font-size: 14px;
-    }
+    .stButton>button { border-radius: 12px; height: 3rem; font-weight: bold; width: 100%; }
     .card-entrega {
         background: #1E1E1E; border-left: 6px solid #dc3545;
         padding: 15px; border-radius: 10px; margin-bottom: 5px; color: white;
@@ -91,7 +84,7 @@ with st.expander("⚙️ CONFIGURAR ROTA"):
     if st.button("➕ ADICIONAR"):
         if busca:
             coords = banco_total[busca]
-            nid = str(int(time.time() * 1000))
+            nid = str(int(time.time() * 1000)) # ID único
             st.session_state.lista_pacotes.append({"id": nid, "nome": busca, "lat": coords[0], "lng": coords[1]})
             salvar_progresso(); st.rerun()
     
@@ -101,15 +94,15 @@ with st.expander("⚙️ CONFIGURAR ROTA"):
         st.rerun()
 
 # =================================================================
-# 4. PREPARAÇÃO DOS PONTOS PARA O MAPA
+# 4. PREPARAÇÃO DO MAPA
 # =================================================================
 pontos_mapa = []
 for p in st.session_state.lista_pacotes:
     feito = p['id'] in st.session_state.entregues_id
     cor = "#28a745" if feito else "#dc3545"
     lat, lng = p.get('lat'), p.get('lng')
-    if lat is None: lat, lng = banco_total.get(p['nome'], (-16.15, -47.96))
-
+    
+    # Extrai o número para a bolinha
     num = re.findall(r'\d+', p['nome'])
     label = num[0] if num else p['nome'][:2]
     
@@ -117,9 +110,6 @@ for p in st.session_state.lista_pacotes:
 
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else (pontos_mapa[0]['lat'], pontos_mapa[0]['lng']) if pontos_mapa else [-16.15, -47.96]
 
-# =================================================================
-# 5. O MAPA COM O FIX DE COMUNICAÇÃO
-# =================================================================
 mapa_html = f"""
 <!DOCTYPE html>
 <html>
@@ -127,12 +117,19 @@ mapa_html = f"""
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        #map {{ height: 400px; width: 100%; border-radius: 15px; }}
+        #map {{ height: 450px; width: 100%; border-radius: 15px; }}
         body {{ margin: 0; }}
         .pin {{
-            width: 30px; height: 30px; border-radius: 50%; border: 2px solid white;
+            width: 32px; height: 32px; border-radius: 50%; border: 2px solid white;
             display: flex; align-items: center; justify-content: center;
-            color: white; font-weight: bold; font-family: sans-serif; font-size: 12px;
+            color: white; font-weight: bold; font-family: sans-serif; font-size: 13px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+        }}
+        .btn-done {{
+            background-color: #28a745; color: white; border: none; padding: 12px;
+            border-radius: 8px; width: 100%; font-weight: bold; font-size: 14px;
+            cursor: pointer; font-family: sans-serif; margin-top: 10px;
+            display: flex; align-items: center; justify-content: center; gap: 5px;
         }}
     </style>
 </head>
@@ -145,26 +142,37 @@ mapa_html = f"""
         }}).addTo(map);
 
         var pontos = {json.dumps(pontos_mapa)};
+        
         pontos.forEach(function(p) {{
             var icon = L.divIcon({{
                 className: '',
                 html: `<div class="pin" style="background:${{p.cor}}">${{p.concluido ? '✓' : p.label}}</div>`,
-                iconSize: [30, 30], iconAnchor: [15, 15]
+                iconSize: [32, 32], iconAnchor: [16, 16]
             }});
 
-            // O SEGREDO ESTÁ NO target="_top" ABAIXO
-            // Isso impede que o app abra dentro do mapa e bugue a interface
+            // FUNÇÃO JAVASCRIPT PARA CRIAR O LINK CORRETO
             var popupContent = `
-                <div style="text-align:center; min-width:140px;">
-                    <b style="font-family:sans-serif;">${{p.nome}}</b><br>
-                    <a href="./?action=done&id=${{p.id}}" target="_top" class="btn-done-map" 
-                       style="background-color:#28a745; color:white; padding:10px; border-radius:8px; text-decoration:none; display:block; margin-top:10px; font-family:sans-serif;">
-                       ✅ MARCAR ENTREGUE
-                    </a>
+                <div style="text-align:center; min-width:150px;">
+                    <b style="font-family:sans-serif; font-size:15px;">${{p.nome}}</b><br>
+                    <button class="btn-done" onclick="marcarEntregue('${{p.id}}')">
+                        ✅ MARCAR ENTREGUE
+                    </button>
                 </div>`;
 
-            L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map).bindPopup(popupContent);
+            if (!p.concluido) {{
+                L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map).bindPopup(popupContent);
+            }} else {{
+                L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map);
+            }}
         }});
+
+        function marcarEntregue(id) {{
+            // Essa linha abaixo é a que faz a mágica de atualizar o Streamlit lá em cima
+            const url = new URL(window.parent.location.href);
+            url.searchParams.set('action', 'done');
+            url.searchParams.set('id', id);
+            window.parent.location.href = url.href;
+        }}
 
         map.locate({{setView: false, watch: true, enableHighAccuracy: true}});
         map.on('locationfound', function(e) {{
@@ -175,22 +183,21 @@ mapa_html = f"""
 </html>
 """
 
-st.components.v1.html(mapa_html, height=410)
+st.components.v1.html(mapa_html, height=460)
 
 # =================================================================
-# 6. LISTA DE ENTREGAS
+# 5. LISTA DE APOIO (CASO O MAPA FALHE)
 # =================================================================
 st.subheader("📋 Roteiro")
 for p in pontos_mapa:
-    estilo = "concluido" if p['concluido'] else ""
-    with st.container():
-        st.markdown(f'<div class="card-entrega {estilo}"><strong>{p["nome"]}</strong></div>', unsafe_allow_html=True)
-        c1, c2 = st.columns(2)
-        
-        url_maps = f"https://www.google.com/maps/search/?api=1&query={p['lat']},{p['lng']}"
-        c1.markdown(f'<a href="{url_maps}" target="_blank" style="background:#4285F4; color:white; text-decoration:none; padding:10px; border-radius:10px; display:block; text-align:center; font-weight:bold;">📍 MAPS</a>', unsafe_allow_html=True)
-        
-        if not p['concluido']:
+    if not p['concluido']:
+        with st.container():
+            st.markdown(f'<div class="card-entrega"><strong>{p["nome"]}</strong></div>', unsafe_allow_html=True)
+            c1, c2 = st.columns(2)
+            # Link Google Maps Nativo
+            url_maps = f"https://www.google.com/maps/search/?api=1&query={p['lat']},{p['lng']}"
+            c1.markdown(f'<a href="{url_maps}" target="_blank" style="background:#4285F4; color:white; text-decoration:none; padding:10px; border-radius:10px; display:block; text-align:center; font-weight:bold; font-size:14px;">📍 VER NO MAPS</a>', unsafe_allow_html=True)
+            
             if c2.button("✅ OK", key=f"btn_{p['id']}"):
                 st.query_params.update(action="done", id=p['id'])
                 st.rerun()
