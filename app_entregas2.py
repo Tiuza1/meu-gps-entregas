@@ -23,21 +23,20 @@ except:
 # =================================================================
 # 2. CSS PARA OCULTAR O HEADER E POSICIONAR O MENU NO TOPO
 # =================================================================
+# No topo do código, substitua o bloco st.markdown(""" <style> ... """) por este:
 st.markdown("""
     <style>
-    /* OCULTA TOTALMENTE A BARRA SUPERIOR DO STREAMLIT */
-    [data-testid="stHeader"] {
-        display: none !important;
-    }
+    /* 1. ESCONDE O HEADER PARA O BOTÃO SUBIR */
+    [data-testid="stHeader"], [data-testid="stToolbar"], footer { display: none !important; }
 
-    /* ÍCONE DO MENU (HAMBÚRGUER) - AGORA BEM NO TOPO ESQUERDO */
+    /* 2. ÍCONE DO MENU NO TOPO EXTREMO */
     [data-testid="stSidebarCollapsedControl"] {
-        background-color: #000000 !important; /* Preto puro para contraste */
+        background-color: #000000 !important;
         color: white !important;
         border-radius: 8px !important;
-        width: 55px !important;
-        height: 55px !important;
-        top: 5px !important;    /* Movido mais para cima */
+        width: 50px !important;
+        height: 50px !important;
+        top: 5px !important;
         left: 5px !important;
         z-index: 1000000 !important;
         display: flex !important;
@@ -45,33 +44,19 @@ st.markdown("""
         justify-content: center !important;
         box-shadow: 0px 4px 15px rgba(0,0,0,0.4) !important;
     }
-    
-    [data-testid="stSidebarCollapsedControl"] svg {
-        fill: white !important;
-        width: 32px !important;
-        height: 32px !important;
+
+    /* 3. DEIXA O MOVIMENTO DA BOLINHA DO GPS SUAVE */
+    .leaflet-marker-icon, .leaflet-marker-shadow {
+        transition: transform 0.2s linear !important;
     }
 
-    /* Ajuste o conteúdo para começar logo abaixo do botão */
-    .block-container { 
-        padding-top: 3.5rem !important; 
-        padding-left: 1rem !important; 
-        padding-right: 1rem !important; 
-    }
-    
-    /* Esconde menu de opções do canto superior direito */
-    [data-testid="stToolbar"] { display: none !important; }
-    footer { display: none !important; }
-
-    /* Botões da interface */
-    .stButton>button { width: 100% !important; height: 50px !important; border-radius: 12px !important; font-weight: bold !important; }
-    .stDownloadButton>button { background-color: #28a745 !important; color: white !important; width: 100% !important; }
+    .block-container { padding-top: 3.5rem !important; }
     </style>
 """, unsafe_allow_html=True)
 
-# =================================================================
+# ===========================================
 # 3. MEMÓRIA DO SISTEMA
-# =================================================================
+# =======================================================================================
 FILE_SAVE = "progresso_final.json"
 
 if 'lista_pacotes' not in st.session_state: st.session_state.lista_pacotes = []
@@ -189,8 +174,17 @@ for nome, info in quadras.items():
     folium.Marker(location=info['coords'], popup=nome, icon=folium.DivIcon(html=icon_html)).add_to(m)
 
 f_center = st.session_state.pop("forcar_centro", None); f_zoom = st.session_state.pop("forcar_zoom", None)
-map_data = st_folium(m, use_container_width=True, height=600, key="mapa_full", returned_objects=["last_object_clicked_popup"], center=f_center, zoom=f_zoom)
-
+# Substitua a linha do map_data = st_folium(...) por esta:
+map_data = st_folium(
+    m, 
+    use_container_width=True, 
+    height=600, 
+    key="mapa_v3",
+    # SEGREDOS DA PERFORMANCE:
+    returned_objects=["last_object_clicked_popup"], # SÓ avisa o Python se clicar no balão
+    center=st.session_state.get("forcar_centro"),
+    zoom=16
+)
 if map_data.get("last_object_clicked_popup"):
     if st.session_state.ponto_clicado != map_data["last_object_clicked_popup"]:
         st.session_state.ponto_clicado = map_data["last_object_clicked_popup"]; st.rerun()
