@@ -21,47 +21,56 @@ except:
     st.error("Chave de API inválida.")
 
 # =================================================================
-# 2. CSS PARA SEPARAR OS ÍCONES
+# 2. CSS PARA OCULTAR O HEADER E POSICIONAR O MENU NO TOPO
 # =================================================================
 st.markdown("""
     <style>
-    /* ÍCONE DO MENU (STREAMLIT) - FIXO NO TOPO ESQUERDO */
+    /* OCULTA TOTALMENTE A BARRA SUPERIOR DO STREAMLIT */
+    [data-testid="stHeader"] {
+        display: none !important;
+    }
+
+    /* ÍCONE DO MENU (HAMBÚRGUER) - AGORA BEM NO TOPO ESQUERDO */
     [data-testid="stSidebarCollapsedControl"] {
-        background-color: #1E1E1E !important; /* Fundo escuro */
+        background-color: #000000 !important; /* Preto puro para contraste */
         color: white !important;
         border-radius: 8px !important;
-        width: 50px !important;
-        height: 50px !important;
-        top: 10px !important;
-        left: 10px !important;
-        z-index: 999999 !important;
+        width: 55px !important;
+        height: 55px !important;
+        top: 5px !important;    /* Movido mais para cima */
+        left: 5px !important;
+        z-index: 1000000 !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
-        box-shadow: 0px 4px 10px rgba(0,0,0,0.3) !important;
+        box-shadow: 0px 4px 15px rgba(0,0,0,0.4) !important;
     }
+    
     [data-testid="stSidebarCollapsedControl"] svg {
         fill: white !important;
-        width: 28px !important;
-        height: 28px !important;
+        width: 32px !important;
+        height: 32px !important;
     }
 
-    /* Ajuste para o conteúdo não subir demais */
-    .block-container { padding-top: 4.5rem !important; }
+    /* Ajuste o conteúdo para começar logo abaixo do botão */
+    .block-container { 
+        padding-top: 3.5rem !important; 
+        padding-left: 1rem !important; 
+        padding-right: 1rem !important; 
+    }
     
-    /* Esconder elementos desnecessários */
-    [data-testid="stHeader"] { background-color: transparent !important; }
+    /* Esconde menu de opções do canto superior direito */
     [data-testid="stToolbar"] { display: none !important; }
     footer { display: none !important; }
-    
-    /* Estilo dos botões */
-    .stButton>button { width: 100% !important; height: 50px !important; border-radius: 10px !important; font-weight: bold !important; }
+
+    /* Botões da interface */
+    .stButton>button { width: 100% !important; height: 50px !important; border-radius: 12px !important; font-weight: bold !important; }
     .stDownloadButton>button { background-color: #28a745 !important; color: white !important; width: 100% !important; }
     </style>
 """, unsafe_allow_html=True)
 
 # =================================================================
-# 3. MEMÓRIA E FUNÇÕES
+# 3. MEMÓRIA DO SISTEMA
 # =================================================================
 FILE_SAVE = "progresso_final.json"
 
@@ -94,12 +103,12 @@ def carregar_banco():
 banco_total = carregar_banco()
 
 # =================================================================
-# 4. MENU LATERAL (CONFIGURAÇÕES)
+# 4. MENU LATERAL (SALVAR E LIMPAR)
 # =================================================================
 with st.sidebar:
-    st.header("⚙️ Configurações")
+    st.header("⚙️ Opções da Rota")
     base_input = st.text_input("📍 Início da Rota:", "Luziânia, GO")
-    if st.button("Definir Início"):
+    if st.button("Definir Ponto Inicial"):
         geo = gmaps.geocode(base_input)
         if geo:
             st.session_state.ultima_pos = (geo[0]['geometry']['location']['lat'], geo[0]['geometry']['location']['lng'])
@@ -109,10 +118,10 @@ with st.sidebar:
     if st.session_state.entregues_id:
         data_h = datetime.now().strftime("%d-%m-%Y")
         nomes = [p['nome'] for p in st.session_state.lista_pacotes if p['id'] in st.session_state.entregues_id]
-        txt = f"RELATÓRIO - {data_h}\nTotal: {len(st.session_state.entregues_id)}\n\n" + "\n".join([f"- {n}" for n in sorted(list(set(nomes)))])
-        st.download_button("💾 Salvar Rota (TXT)", data=txt, file_name=f"rota_{data_h}.txt")
+        txt_relat = f"ENTREGAS {data_h}\nTotal: {len(st.session_state.entregues_id)}\n\n" + "\n".join([f"- {n}" for n in sorted(list(set(nomes)))])
+        st.download_button("💾 Salvar Rota em TXT", data=txt_relat, file_name=f"rota_{data_h}.txt")
 
-    if st.button("🗑️ Zerar Rota Atual"):
+    if st.button("🗑️ Limpar Rota / Zerar"):
         if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
         st.session_state.lista_pacotes = []; st.session_state.entregues_id = []; st.session_state.ultima_pos = None; st.session_state.ponto_clicado = None
         st.rerun()
@@ -122,10 +131,10 @@ with st.sidebar:
 # =================================================================
 c1, c2 = st.columns([5, 1])
 with c1:
-    busca = st.selectbox("Busca", options=["(Adicionar...)"] + list(banco_total.keys()), label_visibility="collapsed")
+    busca = st.selectbox("Escolha local", options=["(Adicionar Local...)"] + list(banco_total.keys()), label_visibility="collapsed")
 with c2:
     if st.button("➕"):
-        if busca and busca != "(Adicionar...)":
+        if busca and busca != "(Adicionar Local...)":
             nid = f"{busca}_{len(st.session_state.lista_pacotes)}"
             st.session_state.lista_pacotes.append({"id": nid, "nome": busca})
             st.session_state.ultima_pos = banco_total[busca]
@@ -147,13 +156,13 @@ if st.session_state.ponto_clicado:
         with col1: st.link_button("🚀 GPS", f"https://www.google.com/maps/dir/?api=1&destination={info['coords'][0]},{info['coords'][1]}")
         with col2:
             id_p = next((pid for pid in info['pacotes'] if pid not in st.session_state.entregues_id), None)
-            if id_p and st.button("✅ FEITO"):
+            if id_p and st.button("✅ CONCLUIR"):
                 st.session_state.entregues_id.append(id_p); st.session_state.ultima_pos = info['coords']; salvar_progresso(); st.rerun()
         with col3:
             if st.button("✖️"): st.session_state.ponto_clicado = None; st.rerun()
 
 # =================================================================
-# 6. MAPA (GPS MOVIDO PARA O CANTO INFERIOR DIREITO)
+# 6. MAPA (GPS EM BAIXO À DIREITA)
 # =================================================================
 proximo = None
 pendentes = [n for n, d in quadras.items() if not all(pid in st.session_state.entregues_id for pid in d['pacotes'])]
@@ -167,7 +176,7 @@ if st.session_state.ultima_pos and pendentes:
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else [-16.15, -47.96]
 m = folium.Map(location=centro, zoom_start=16, tiles="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}", attr="Google Maps")
 
-# --- SOLUÇÃO: GPS NO CANTO INFERIOR DIREITO ---
+# GPS NO CANTO INFERIOR DIREITO PARA NÃO ATRAPALHAR NADA
 LocateControl(position='bottomright', fly_to=True, locate_options={"enableHighAccuracy": True}).add_to(m)
 
 for nome, info in quadras.items():
@@ -179,8 +188,7 @@ for nome, info in quadras.items():
     icon_html = f"""<div style="background-color:{cor}; width:42px; height:42px; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; color:white; font-weight:bold; border:{borda}; box-shadow: 2px 2px 8px rgba(0,0,0,0.3); opacity:{'0.5' if concluido else '1.0'}; line-height:1;">{txt}</div>"""
     folium.Marker(location=info['coords'], popup=nome, icon=folium.DivIcon(html=icon_html)).add_to(m)
 
-f_center = st.session_state.pop("forcar_centro", None)
-f_zoom = st.session_state.pop("forcar_zoom", None)
+f_center = st.session_state.pop("forcar_centro", None); f_zoom = st.session_state.pop("forcar_zoom", None)
 map_data = st_folium(m, use_container_width=True, height=600, key="mapa_full", returned_objects=["last_object_clicked_popup"], center=f_center, zoom=f_zoom)
 
 if map_data.get("last_object_clicked_popup"):
@@ -188,4 +196,4 @@ if map_data.get("last_object_clicked_popup"):
         st.session_state.ponto_clicado = map_data["last_object_clicked_popup"]; st.rerun()
 
 if st.session_state.lista_pacotes and proximo and not st.session_state.ponto_clicado:
-    st.info(f"💡 Sugestão: **{proximo}**")
+    st.info(f"💡 Sugestão Próxima: **{proximo}**")
