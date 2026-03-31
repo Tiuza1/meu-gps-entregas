@@ -11,6 +11,7 @@ st.set_page_config(page_title="Painel do Entregador", layout="wide")
 
 FILE_SAVE = "progresso_final.json"
 
+# Inicializa as variáveis de memória
 if 'lista_pacotes' not in st.session_state: st.session_state.lista_pacotes = []
 if 'entregues_id' not in st.session_state: st.session_state.entregues_id = []
 if 'ultima_pos' not in st.session_state: st.session_state.ultima_pos = None
@@ -35,7 +36,7 @@ def salvar_progresso():
     }
     with open(FILE_SAVE, "w") as f: json.dump(dados, f)
 
-# Carregar dados salvos
+# Carrega do arquivo ao iniciar
 if not st.session_state.lista_pacotes and os.path.exists(FILE_SAVE):
     try:
         with open(FILE_SAVE, "r") as f:
@@ -46,31 +47,34 @@ if not st.session_state.lista_pacotes and os.path.exists(FILE_SAVE):
     except: pass
 
 # =================================================================
-# 2. LOGICA DE AÇÕES (VIA URL)
+# 2. PROCESSAR AÇÃO DE "CONCLUÍDO" (AQUI ESTÁ O SEGREDO)
 # =================================================================
-params = st.query_params
-if "action" in params and "id" in params:
-    item_id = params["id"]
-    if params["action"] == "done":
+# Lemos os parâmetros da URL para saber se o usuário clicou no mapa
+query_params = st.query_params
+if "action" in query_params and "id" in query_params:
+    item_id = query_params["id"]
+    if query_params["action"] == "done":
         if item_id not in st.session_state.entregues_id:
             st.session_state.entregues_id.append(item_id)
-            # Achar posição para centralizar
+            # Centraliza no último entregue
             p = next((x for x in st.session_state.lista_pacotes if x['id'] == item_id), None)
             if p: st.session_state.ultima_pos = (p.get('lat'), p.get('lng'))
             salvar_progresso()
+    # Limpa a URL e recarrega a página limpa
     st.query_params.clear()
     st.rerun()
 
 # =================================================================
-# 3. INTERFACE E ESTILOS
+# 3. ESTILOS VISUAIS
 # =================================================================
 st.markdown("""
     <style>
-    .stButton>button { border-radius: 12px; height: 3.2rem; font-weight: bold; width: 100%; }
-    .btn-maps { 
-        background-color: #4285F4 !important; color: white !important; 
-        text-decoration: none; padding: 12px; border-radius: 10px; 
-        display: block; text-align: center; font-weight: bold; font-size: 14px;
+    .stButton>button { border-radius: 12px; height: 3rem; font-weight: bold; width: 100%; background-color: #333; color: white; }
+    .btn-done-map {
+        background-color: #28a745; color: white; padding: 12px;
+        text-decoration: none; border-radius: 8px; display: block;
+        font-weight: bold; text-align: center; margin-top: 10px;
+        font-family: sans-serif; font-size: 14px;
     }
     .card-entrega {
         background: #1E1E1E; border-left: 6px solid #dc3545;
@@ -88,9 +92,7 @@ with st.expander("⚙️ CONFIGURAR ROTA"):
         if busca:
             coords = banco_total[busca]
             nid = str(int(time.time() * 1000))
-            st.session_state.lista_pacotes.append({
-                "id": nid, "nome": busca, "lat": coords[0], "lng": coords[1]
-            })
+            st.session_state.lista_pacotes.append({"id": nid, "nome": busca, "lat": coords[0], "lng": coords[1]})
             salvar_progresso(); st.rerun()
     
     if st.button("🗑️ LIMPAR TUDO"):
@@ -99,7 +101,7 @@ with st.expander("⚙️ CONFIGURAR ROTA"):
         st.rerun()
 
 # =================================================================
-# 4. PREPARAÇÃO DO MAPA
+# 4. PREPARAÇÃO DOS PONTOS PARA O MAPA
 # =================================================================
 pontos_mapa = []
 for p in st.session_state.lista_pacotes:
@@ -115,6 +117,9 @@ for p in st.session_state.lista_pacotes:
 
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else (pontos_mapa[0]['lat'], pontos_mapa[0]['lng']) if pontos_mapa else [-16.15, -47.96]
 
+# =================================================================
+# 5. O MAPA COM O FIX DE COMUNICAÇÃO
+# =================================================================
 mapa_html = f"""
 <!DOCTYPE html>
 <html>
@@ -122,7 +127,7 @@ mapa_html = f"""
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        #map {{ height: 400px; width: 100%; border-radius: 15px; background: #222; }}
+        #map {{ height: 400px; width: 100%; border-radius: 15px; }}
         body {{ margin: 0; }}
         .pin {{
             width: 30px; height: 30px; border-radius: 50%; border: 2px solid white;
@@ -147,14 +152,15 @@ mapa_html = f"""
                 iconSize: [30, 30], iconAnchor: [15, 15]
             }});
 
-            // CORREÇÃO AQUI: window.parent.location.search atualiza o APP inteiro, não o iframe
+            // O SEGREDO ESTÁ NO target="_top" ABAIXO
+            // Isso impede que o app abra dentro do mapa e bugue a interface
             var popupContent = `
-                <div style="text-align:center; font-family:sans-serif; min-width:120px;">
-                    <b style="font-size:14px;">${{p.nome}}</b><br><br>
-                    <button onclick="window.parent.location.search='?action=done&id=${{p.id}}'" 
-                            style="background:#28a745; color:white; border:none; padding:10px; border-radius:5px; width:100%; font-weight:bold; cursor:pointer;">
-                        ✅ ENTREGUE
-                    </button>
+                <div style="text-align:center; min-width:140px;">
+                    <b style="font-family:sans-serif;">${{p.nome}}</b><br>
+                    <a href="./?action=done&id=${{p.id}}" target="_top" class="btn-done-map" 
+                       style="background-color:#28a745; color:white; padding:10px; border-radius:8px; text-decoration:none; display:block; margin-top:10px; font-family:sans-serif;">
+                       ✅ MARCAR ENTREGUE
+                    </a>
                 </div>`;
 
             L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map).bindPopup(popupContent);
@@ -162,7 +168,7 @@ mapa_html = f"""
 
         map.locate({{setView: false, watch: true, enableHighAccuracy: true}});
         map.on('locationfound', function(e) {{
-            L.circleMarker(e.latlng, {{radius: 7, color: '#4285F4', fillOpacity: 1, weight: 2}}).addTo(map);
+            L.circleMarker(e.latlng, {{radius: 7, color: '#4285F4', fillOpacity: 1}}).addTo(map);
         }});
     </script>
 </body>
@@ -172,19 +178,17 @@ mapa_html = f"""
 st.components.v1.html(mapa_html, height=410)
 
 # =================================================================
-# 5. LISTA ABAIXO DO MAPA
+# 6. LISTA DE ENTREGAS
 # =================================================================
-st.subheader("📋 Roteiro de Hoje")
-
+st.subheader("📋 Roteiro")
 for p in pontos_mapa:
     estilo = "concluido" if p['concluido'] else ""
     with st.container():
         st.markdown(f'<div class="card-entrega {estilo}"><strong>{p["nome"]}</strong></div>', unsafe_allow_html=True)
         c1, c2 = st.columns(2)
         
-        # Link para o Google Maps nativo
         url_maps = f"https://www.google.com/maps/search/?api=1&query={p['lat']},{p['lng']}"
-        c1.markdown(f'<a href="{url_maps}" target="_blank" class="btn-maps">📍 VER NO MAPS</a>', unsafe_allow_html=True)
+        c1.markdown(f'<a href="{url_maps}" target="_blank" style="background:#4285F4; color:white; text-decoration:none; padding:10px; border-radius:10px; display:block; text-align:center; font-weight:bold;">📍 MAPS</a>', unsafe_allow_html=True)
         
         if not p['concluido']:
             if c2.button("✅ OK", key=f"btn_{p['id']}"):
