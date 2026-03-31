@@ -19,19 +19,26 @@ except:
     st.error("Chave de API inválida.")
 
 # =================================================================
-# 2. CSS ANTI-BUG E INTERFACE
+# 2. CSS ANTI-BUG (Visual Limpo e Estável)
 # =================================================================
 st.set_page_config(page_title="GPS Multi-Pacotes", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
     <style>
+    /* Oculta a barra preta e lixo visual do Streamlit */
     [data-testid="stHeader"] { background-color: transparent !important; }
     [data-testid="stToolbar"] { display: none !important; }
     footer { display: none !important; }
+    
+    /* Remove margens e ajusta o fundo para combinar com o mapa */
     .stApp { background-color: #f0f2f6 !important; }
     .block-container { padding: 3rem 0.5rem 0.5rem 0.5rem !important; max-width: 100% !important; }
+    
+    /* Oculta o 'Select All' e os rótulos */
     div[data-baseweb="select"] [role="option"]:first-child { display: none !important; }
     .stSelectbox label { display: none !important; }
+    
+    /* Botões Arredondados e Grandes */
     .stButton>button {
         width: 100% !important; height: 55px !important; font-size: 16px !important; 
         font-weight: bold !important; border-radius: 12px !important;
@@ -48,6 +55,7 @@ if 'lista_pacotes' not in st.session_state: st.session_state.lista_pacotes =[]
 if 'entregues_id' not in st.session_state: st.session_state.entregues_id =[]
 if 'ultima_pos' not in st.session_state: st.session_state.ultima_pos = None
 if 'ponto_clicado' not in st.session_state: st.session_state.ponto_clicado = None
+if 'trigger_gps' not in st.session_state: st.session_state.trigger_gps = False
 
 def salvar_progresso():
     dados = {
@@ -121,19 +129,16 @@ with c2:
             st.session_state.lista_pacotes.append({"id": novo_id, "nome": busca})
             st.session_state.ultima_pos = banco_total[busca]
             salvar_progresso()
-            
-            st.session_state.forcar_centro = banco_total[busca]
-            st.session_state.forcar_zoom = 16
             st.rerun()
 
 # =================================================================
-# 6. PAINEL DE AÇÃO E LÓGICA DE MAPA
+# 6. PAINEL DE AÇÃO E LÓGICA DE AGRUPAMENTO
 # =================================================================
 quadras_agrupadas = {}
 for p in st.session_state.lista_pacotes:
     n = p['nome']
     if n not in quadras_agrupadas:
-        quadras_agrupadas[n] = {"coords": banco_total[n], "pacotes": []}
+        quadras_agrupadas[n] = {"coords": banco_total[n], "pacotes":[]}
     quadras_agrupadas[n]['pacotes'].append(p['id'])
 
 if st.session_state.ponto_clicado:
@@ -158,19 +163,17 @@ if st.session_state.ponto_clicado:
                     if sum(1 for pid in info_q['pacotes'] if pid in st.session_state.entregues_id) == t_p:
                         st.session_state.ponto_clicado = None 
                     salvar_progresso()
-                    
-                    st.session_state.forcar_centro = info_q['coords']
-                    st.session_state.forcar_zoom = 16
+                    st.session_state.trigger_gps = True 
                     st.rerun()
             else:
-                st.button("Entregue!", disabled=True)
+                st.button("Tudo Entregue!", disabled=True)
         with c_close:
             if st.button("✖️"):
                 st.session_state.ponto_clicado = None
                 st.rerun()
 
 # =================================================================
-# 7. MAPA PRINCIPAL (BOLINHA AZUL FLUIDA)
+# 7. MAPA PRINCIPAL (TILES OFICIAIS DO GOOGLE MAPS)
 # =================================================================
 proximo_ideal = None
 pendentes =[n for n, d in quadras_agrupadas.items() if not all(pid in st.session_state.entregues_id for pid in d['pacotes'])]
@@ -184,41 +187,29 @@ if st.session_state.ultima_pos and pendentes:
             menor_dist = dist
             proximo_ideal = n
 
-centro = st.session_state.ultima_pos if st.session_state.ultima_pos else[-16.15, -47.96]
+centro = st.session_state.ultima_pos if st.session_state.ultima_pos else [-16.15, -47.96]
 
-# O 'tiles' força o uso do servidor oficial de ruas do Google Maps
 m = folium.Map(
     location=centro, 
     zoom_start=16, 
-    zoom_control=False,
+    zoom_control=True, # Deixei o controle de zoom ativo para facilitar se preferir os botões +/-
     tiles="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
     attr="Google Maps"
 )
 
-# INJEÇÃO CSS PARA A BOLINHA AZUL "DESLIZAR" EM VEZ DE TELEPORTAR
-suavizacao_bolinha = """
-<style>
-/* Força a transição suave de todos os vetores desenhados no mapa (incluindo a bolinha azul) */
-path.leaflet-interactive {
-    transition: d 0.8s linear, stroke-opacity 0.8s, fill-opacity 0.8s !important;
-}
-</style>
-"""
-m.get_root().html.add_child(folium.Element(suavizacao_bolinha))
+# Gatilho de GPS automático ao entregar
+auto_gps = st.session_state.get('trigger_gps', False)
 
-# CONFIGURAÇÃO DE GPS DE ALTA PERFORMANCE
+# ---> CORREÇÃO DA POSIÇÃO DA BOLINHA DO GPS AQUI <---
 LocateControl(
-    position='bottomright',
-    auto_start=True,        # O GPS já inicia rodando sozinho no fundo
-    setView='once',         # Foca em você a 1ª vez, mas não trava sua tela
-    locate_options={
-        "enableHighAccuracy": True, # Exige o máximo do chip GPS do celular
-        "watch": True,              # MODO VIGIA: Fica atualizando o tempo todo
-        "maximumAge": 500,          # Aceita só dados recentes (0.5s de atraso)
-        "timeout": 5000,            # Tenta conectar rápido
-        "maxZoom": 16               # Impede o zoom insano
-    }
+    position='bottomleft', # Movido para o canto inferior esquerdo (longe da logo)
+    auto_start=auto_gps, 
+    fly_to=True, 
+    locate_options={"enableHighAccuracy": True, "maximumAge": 1000, "maxZoom": 16} 
 ).add_to(m)
+
+if auto_gps:
+    st.session_state.trigger_gps = False
 
 for nome, info in quadras_agrupadas.items():
     t_p = len(info['pacotes'])
@@ -236,18 +227,8 @@ for nome, info in quadras_agrupadas.items():
                     {txt}</div>"""
     folium.Marker(location=info['coords'], popup=nome, icon=folium.DivIcon(html=icon_html)).add_to(m)
 
-f_center = st.session_state.pop("forcar_centro", None)
-f_zoom = st.session_state.pop("forcar_zoom", None)
-
-map_data = st_folium(
-    m, 
-    use_container_width=True, 
-    height=650, 
-    key="mapa_full", 
-    returned_objects=["last_object_clicked_popup"],
-    center=f_center,
-    zoom=f_zoom
-)
+# O mapa continua preenchendo a tela perfeitamente
+map_data = st_folium(m, use_container_width=True, height=650, key="mapa_full", returned_objects=["last_object_clicked_popup"])
 
 if map_data.get("last_object_clicked_popup"):
     if st.session_state.ponto_clicado != map_data["last_object_clicked_popup"]:
