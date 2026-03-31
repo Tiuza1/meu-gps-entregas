@@ -9,8 +9,8 @@ import math
 # =================================================================
 FILE_SAVE = "progresso_final.json"
 
-if 'lista_pacotes' not in st.session_state: st.session_state.lista_pacotes = []
-if 'entregues_id' not in st.session_state: st.session_state.entregues_id = []
+if 'lista_pacotes' not in st.session_state: st.session_state.lista_pacotes =[]
+if 'entregues_id' not in st.session_state: st.session_state.entregues_id =[]
 if 'ultima_pos' not in st.session_state: st.session_state.ultima_pos = None
 
 # Carregar do arquivo JSON se existir
@@ -18,8 +18,8 @@ if not st.session_state.lista_pacotes and os.path.exists(FILE_SAVE):
     try:
         with open(FILE_SAVE, "r") as f:
             d = json.load(f)
-            st.session_state.lista_pacotes = d.get("lista_pacotes", [])
-            st.session_state.entregues_id = d.get("entregues_id", [])
+            st.session_state.lista_pacotes = d.get("lista_pacotes",[])
+            st.session_state.entregues_id = d.get("entregues_id",[])
             st.session_state.ultima_pos = d.get("ultima_pos")
     except: pass
 
@@ -48,7 +48,7 @@ if "action" in qp and "id" in qp:
                 try:
                     with open('Lugares marcados.json', 'r', encoding='utf-8') as f:
                         db = json.load(f)
-                        for l in db.get('features', []):
+                        for l in db.get('features',[]):
                             nome_b = str(l['properties'].get('title') or l['properties'].get('name')).strip()
                             if nome_b == ponto['nome']:
                                 st.session_state.ultima_pos = (l['geometry']['coordinates'][1], l['geometry']['coordinates'][0])
@@ -56,12 +56,14 @@ if "action" in qp and "id" in qp:
                 except: pass
 
     elif action == "delete":
+        # Remove da lista principal
         st.session_state.lista_pacotes = [p for p in st.session_state.lista_pacotes if p['id'] != item_id]
+        # Remove da lista de entregues caso já estivesse lá
         if item_id in st.session_state.entregues_id:
             st.session_state.entregues_id.remove(item_id)
             
     salvar_progresso()
-    st.query_params.clear() # Limpa a URL
+    st.query_params.clear() # Limpa a URL para não repetir a ação
     st.rerun()
 
 # =================================================================
@@ -71,7 +73,7 @@ st.set_page_config(page_title="GPS Profissional", layout="wide", initial_sidebar
 
 st.markdown("""
     <style>
-    [data-testid="stHeader"], [data-testid="stToolbar"], footer { display: none !important; }
+    [data-testid="stHeader"],[data-testid="stToolbar"], footer { display: none !important; }
     
     /* ÍCONE DO MENU ESCURO NO TOPO ESQUERDO */
     [data-testid="stSidebarCollapsedControl"] {
@@ -111,7 +113,7 @@ with st.sidebar:
     st.header("⚙️ Opções")
     if st.button("🗑️ LIMPAR TUDO"):
         if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
-        st.session_state.lista_pacotes = []; st.session_state.entregues_id = []; st.session_state.ultima_pos = None
+        st.session_state.lista_pacotes =[]; st.session_state.entregues_id =[]; st.session_state.ultima_pos = None
         st.rerun()
 
 # =================================================================
@@ -132,12 +134,12 @@ with c2:
 # 6. LÓGICA DE PONTOS E CORES
 # =================================================================
 proximo_id = None
-pontos_para_o_mapa = []
+pontos_para_o_mapa =[]
 
 for p in st.session_state.lista_pacotes:
     coords = banco_total.get(p['nome'], (0,0))
     concluido = p['id'] in st.session_state.entregues_id
-    cor = "#28a745" if concluido else "#dc3545"
+    cor = "#28a745" if concluido else "#dc3545" # Verde se feito, Vermelho se pendente
     pontos_para_o_mapa.append({"id": p['id'], "lat": coords[0], "lng": coords[1], "nome": p['nome'], "concluido": concluido, "cor": cor})
 
 pendentes = [p for p in pontos_para_o_mapa if not p['concluido']]
@@ -150,9 +152,10 @@ if st.session_state.ultima_pos and pendentes:
             proximo_id = p['id']
 
 for p in pontos_para_o_mapa:
-    if p['id'] == proximo_id: p['cor'] = "#fd7e14"
+    if p['id'] == proximo_id: p['cor'] = "#fd7e14" # Laranja para o próximo da fila
     num = re.findall(r'\d+', p['nome'])[0] if re.findall(r'\d+', p['nome']) else p['nome'][:2]
-    p['txt'] = "✔" if p['concluido'] else num
+    # Aqui alteramos para um 'V' ao invés de '✔'
+    p['txt'] = "V" if p['concluido'] else num
 
 # =================================================================
 # 7. MAPA COM POPUP TRANSPARENTE E AÇÕES
@@ -173,6 +176,7 @@ mapa_html = f"""
             display: flex; align-items: center; justify-content: center;
             color: white; font-weight: bold; font-family: sans-serif;
             border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            font-size: 16px;
         }}
         /* POPUP TRANSPARENTE */
         .leaflet-popup-content-wrapper {{
@@ -210,16 +214,18 @@ mapa_html = f"""
         pontos.forEach(function(p) {{
             var icon = L.divIcon({{
                 className: '',
-                html: '<div class="pin" style="background:'+p.cor+'; opacity:'+(p.concluido ? 0.6 : 1)+'">'+p.txt+'</div>',
+                // Ajustei a opacidade para o V verde ficar mais visível (0.9 em vez de 0.6)
+                html: '<div class="pin" style="background:'+p.cor+'; opacity:'+(p.concluido ? 0.9 : 1)+'">'+p.txt+'</div>',
                 iconSize: [38, 38], iconAnchor: [19, 19]
             }});
 
+            // USO DO window.parent.location.search PARA GARANTIR O ACIONAMENTO DO PYTHON
             var popupContent = `
                 <div class="popup-container">
                     <div class="popup-title">${{p.nome}}</div>
                     <a href="https://www.google.com/maps/dir/?api=1&destination=${{p.lat}},${{p.lng}}" target="_blank" class="btn btn-gps">🚀 GPS</a>
-                    <a href="?action=done&id=${{p.id}}" target="_top" class="btn btn-done">✅ FEITO</a>
-                    <a href="?action=delete&id=${{p.id}}" target="_top" class="btn btn-del">🗑️ EXCLUIR</a>
+                    <a href="#" onclick="window.parent.location.search='?action=done&id=${{p.id}}'; return false;" class="btn btn-done">✅ FEITO</a>
+                    <a href="#" onclick="window.parent.location.search='?action=delete&id=${{p.id}}'; return false;" class="btn btn-del">🗑️ EXCLUIR</a>
                 </div>
             `;
 
@@ -233,7 +239,6 @@ mapa_html = f"""
                 userMarker = L.circleMarker(e.latlng, {{
                     radius: 9, fillColor: "#4285F4", color: "white", weight: 3, opacity: 1, fillOpacity: 1
                 }}).addTo(map);
-                // Centraliza no GPS apenas no primeiro carregamento ou após rerun
                 map.setView(e.latlng, 16); 
             }} else {{
                 userMarker.setLatLng(e.latlng);
