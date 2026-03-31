@@ -19,9 +19,10 @@ except:
     st.error("Chave de API inválida.")
 
 # =================================================================
-# 2. CSS ANTI-BUG E POSICIONAMENTO
+# 2. CSS ANTI-BUG E INTERFACE
 # =================================================================
-st.set_page_config(page_title="GPS Multi-Pacotes", layout="wide", initial_sidebar_state="collapsed")
+# initial_sidebar_state="expanded" para o menu não sumir
+st.set_page_config(page_title="GPQuadras Pro", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
     <style>
@@ -36,32 +37,30 @@ st.markdown("""
         width: 100% !important; height: 55px !important; font-size: 16px !important; 
         font-weight: bold !important; border-radius: 12px !important;
     }
-    /* Estilo específico para o botão de download no menu lateral */
     .stDownloadButton>button {
-        background-color: #28a745 !important;
-        color: white !important;
-        width: 100% !important; 
-        height: 55px !important;
-        border-radius: 12px !important;
+        background-color: #28a745 !important; color: white !important;
+        width: 100% !important; height: 55px !important; border-radius: 12px !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
 # =================================================================
-# 3. MEMÓRIA DO SISTEMA
+# 3. MEMÓRIA DO SISTEMA (AUTO-SAVE)
 # =================================================================
 FILE_SAVE = "progresso_final.json"
 
-if 'lista_pacotes' not in st.session_state: st.session_state.lista_pacotes =[]
-if 'entregues_id' not in st.session_state: st.session_state.entregues_id =[]
+if 'lista_pacotes' not in st.session_state: st.session_state.lista_pacotes = []
+if 'entregues_id' not in st.session_state: st.session_state.entregues_id = []
 if 'ultima_pos' not in st.session_state: st.session_state.ultima_pos = None
 if 'ponto_clicado' not in st.session_state: st.session_state.ponto_clicado = None
+if 'pontos_extras' not in st.session_state: st.session_state.pontos_extras = {}
 
 def salvar_progresso():
     dados = {
         "lista_pacotes": st.session_state.lista_pacotes,
         "entregues_id": st.session_state.entregues_id,
-        "ultima_pos": st.session_state.ultima_pos
+        "ultima_pos": st.session_state.ultima_pos,
+        "pontos_extras": st.session_state.pontos_extras
     }
     with open(FILE_SAVE, "w") as f: json.dump(dados, f)
 
@@ -70,9 +69,10 @@ if not st.session_state.lista_pacotes:
         try:
             with open(FILE_SAVE, "r") as f:
                 d = json.load(f)
-                st.session_state.lista_pacotes = d["lista_pacotes"]
-                st.session_state.entregues_id = d["entregues_id"]
-                st.session_state.ultima_pos = tuple(d["ultima_pos"]) if d["ultima_pos"] else None
+                st.session_state.lista_pacotes = d.get("lista_pacotes", [])
+                st.session_state.entregues_id = d.get("entregues_id", [])
+                st.session_state.ultima_pos = tuple(d["ultima_pos"]) if d.get("ultima_pos") else None
+                st.session_state.pontos_extras = d.get("pontos_extras", {})
         except: pass
 
 @st.cache_data
@@ -88,53 +88,36 @@ def carregar_banco():
 banco_total = carregar_banco()
 
 # =================================================================
-# 4. MENU LATERAL (CONFIGURAÇÕES, SALVAR E LIMPAR)
+# 4. MENU LATERAL (SALVAR E LIMPAR)
 # =================================================================
 with st.sidebar:
-    st.title("⚙️ Menu de Rota")
+    st.title("⚙️ Opções de Rota")
     base_input = st.text_input("📍 Início da Rota:", "Luziânia, GO")
     if st.button("🗺️ DEFINIR INÍCIO"):
         geo = gmaps.geocode(base_input)
         if geo:
             st.session_state.ultima_pos = (geo[0]['geometry']['location']['lat'], geo[0]['geometry']['location']['lng'])
-            salvar_progresso()
-            st.rerun()
-    
+            salvar_progresso(); st.rerun()
+
     st.markdown("---")
     
-    # FUNCIONALIDADE: SALVAR ROTA (Relatório TXT)
+    # BOTÃO SALVAR ROTA (DOWNLOAD TXT)
     if st.session_state.entregues_id:
-        data_hoje = datetime.now().strftime("%d-%m-%Y")
-        # Gera a lista de nomes das quadras concluídas
-        nomes_concluidos = []
-        for p in st.session_state.lista_pacotes:
-            if p['id'] in st.session_state.entregues_id:
-                nomes_concluidos.append(p['nome'])
-        
-        relatorio = f"RELATÓRIO DE ENTREGAS - {data_hoje}\n"
-        relatorio += f"Total de pacotes: {len(st.session_state.entregues_id)}\n\n"
-        relatorio += "QUADRAS CONCLUÍDAS:\n"
-        for nome in sorted(list(set(nomes_concluidos))):
-            relatorio += f"- {nome}\n"
-        
-        st.download_button(
-            label="💾 SALVAR ROTA (Baixar TXT)",
-            data=relatorio,
-            file_name=f"rota_{data_hoje}.txt",
-            mime="text/plain"
-        )
+        data_h = datetime.now().strftime("%d-%m-%Y")
+        nomes_feitos = [p['nome'] for p in st.session_state.lista_pacotes if p['id'] in st.session_state.entregues_id]
+        relat = f"RELATÓRIO DE ENTREGAS - {data_h}\nTotal: {len(st.session_state.entregues_id)}\n\n"
+        for n in sorted(list(set(nomes_feitos))): relat += f"- {n}\n"
+        st.download_button("💾 SALVAR ROTA (TXT)", data=relat, file_name=f"rota_{data_h}.txt")
 
-    # FUNCIONALIDADE: LIMPAR ROTA (Zerar)
-    if st.button("🗑️ LIMPAR ROTA (Zerar Tudo)"):
-        if os.path.exists(FILE_SAVE): 
-            os.remove(FILE_SAVE)
-        st.session_state.lista_pacotes = []
-        st.session_state.entregues_id = []
-        st.session_state.ponto_clicado = None
+    # BOTÃO LIMPAR ROTA (ZERAR TUDO)
+    if st.button("🗑️ LIMPAR ROTA (Zerar)"):
+        if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
+        st.session_state.lista_pacotes = []; st.session_state.entregues_id = []
+        st.session_state.pontos_extras = {}; st.session_state.ponto_clicado = None
         st.rerun()
 
 # =================================================================
-# 5. BUSCA E PAINEL DE AÇÃO
+# 5. BUSCA E LÓGICA DE AGRUPAMENTO
 # =================================================================
 c1, c2 = st.columns([4, 1])
 with c1:
@@ -152,36 +135,15 @@ quadras_agrupadas = {}
 for p in st.session_state.lista_pacotes:
     n = p['nome']
     if n not in quadras_agrupadas:
-        quadras_agrupadas[n] = {"coords": banco_total[n], "pacotes": []}
-    quadras_agrupadas[n]['pacotes'].append(p['id'])
+        coords = banco_total.get(n) or st.session_state.pontos_extras.get(n)
+        if coords:
+            quadras_agrupadas[n] = {"coords": coords, "pacotes": []}
+    if n in quadras_agrupadas:
+        quadras_agrupadas[n]['pacotes'].append(p['id'])
 
-if st.session_state.ponto_clicado:
-    nome_sel = st.session_state.ponto_clicado
-    if nome_sel in quadras_agrupadas:
-        info_q = quadras_agrupadas[nome_sel]
-        f_p = sum(1 for pid in info_q['pacotes'] if pid in st.session_state.entregues_id)
-        t_p = len(info_q['pacotes'])
-        st.info(f"**📍 {nome_sel}** — ({f_p}/{t_p} pacotes)")
-        c_gps, c_done, c_close = st.columns([2, 2, 1])
-        with c_gps:
-            st.link_button("🚀 GPS", f"https://www.google.com/maps/dir/?api=1&destination={info_q['coords'][0]},{info_q['coords'][1]}")
-        with c_done:
-            id_p = next((pid for pid in info_q['pacotes'] if pid not in st.session_state.entregues_id), None)
-            if id_p:
-                if st.button("✅ FEITO"):
-                    st.session_state.entregues_id.append(id_p)
-                    st.session_state.ultima_pos = info_q['coords']
-                    if sum(1 for pid in info_q['pacotes'] if pid in st.session_state.entregues_id) == t_p:
-                        st.session_state.ponto_clicado = None 
-                    salvar_progresso(); st.session_state.forcar_centro = info_q['coords']; st.session_state.forcar_zoom = 16; st.rerun()
-        with c_close:
-            if st.button("✖️"): st.session_state.ponto_clicado = None; st.rerun()
-
-# =================================================================
-# 6. MAPA E LÓGICA
-# =================================================================
+# Sugestão Próxima
 proximo_ideal = None
-pendentes =[n for n, d in quadras_agrupadas.items() if not all(pid in st.session_state.entregues_id for pid in d['pacotes'])]
+pendentes = [n for n, d in quadras_agrupadas.items() if not all(pid in st.session_state.entregues_id for pid in d['pacotes'])]
 if st.session_state.ultima_pos and pendentes:
     menor_dist = float('inf')
     for n in pendentes:
@@ -189,10 +151,19 @@ if st.session_state.ultima_pos and pendentes:
         dist = math.sqrt((st.session_state.ultima_pos[0]-c[0])**2 + (st.session_state.ultima_pos[1]-c[1])**2)
         if dist < menor_dist: menor_dist = dist; proximo_ideal = n
 
+# =================================================================
+# 6. MAPA (GOOGLE LIMPO + TOCAR PARA MARCAR)
+# =================================================================
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else [-16.15, -47.96]
-m = folium.Map(location=centro, zoom_start=16, zoom_control=True, tiles="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}", attr="Google Maps")
 
-m.get_root().html.add_child(folium.Element("""<style>.leaflet-bottom.leaflet-left { margin-bottom: 150px !important; } path.leaflet-interactive { transition: d 0.8s linear !important; }</style>"""))
+m = folium.Map(
+    location=centro, zoom_start=16, zoom_control=False,
+    tiles="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&apistyle=s.t:3|p.v:off,s.t:1|p.v:on",
+    attr="Google Maps Limpo"
+)
+
+# GPS Alto e Bolinha Fluida
+m.get_root().html.add_child(folium.Element("<style>.leaflet-bottom.leaflet-left { margin-bottom: 160px !important; } path.leaflet-interactive { transition: d 0.8s linear !important; }</style>"))
 
 LocateControl(position='bottomleft', fly_to=True, locate_options={"enableHighAccuracy": True, "maximumAge": 500, "watch": True, "maxZoom": 16}).add_to(m)
 
@@ -202,16 +173,43 @@ for nome, info in quadras_agrupadas.items():
     cor = "#28a745" if concluido else ("#fd7e14" if nome == proximo_ideal else "#dc3545")
     borda = "4px solid #007bff" if (t_p > 1 and not concluido) else "2px solid white"
     txt = "✔" if concluido else (f"{num}<br><small>x{t_p}</small>" if t_p > 1 else num)
-    icon_html = f"""<div style="background-color:{cor}; width:42px; height:42px; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; color:white; font-weight:bold; border:{borda}; box-shadow: 2px 2px 8px rgba(0,0,0,0.3); opacity:{'0.5' if concluido else '1.0'}; line-height:1;">{txt}</div>"""
+    icon_html = f"""<div style="background-color:{cor}; width:40px; height:40px; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; color:white; font-weight:bold; border:{borda}; box-shadow: 2px 2px 8px rgba(0,0,0,0.3); opacity:{'0.5' if concluido else '1.0'}; line-height:1;">{txt}</div>"""
     folium.Marker(location=info['coords'], popup=nome, icon=folium.DivIcon(html=icon_html)).add_to(m)
 
 f_center = st.session_state.pop("forcar_centro", None)
 f_zoom = st.session_state.pop("forcar_zoom", None)
-map_data = st_folium(m, use_container_width=True, height=650, key="mapa_full", returned_objects=["last_object_clicked_popup"], center=f_center, zoom=f_zoom)
 
+map_data = st_folium(m, use_container_width=True, height=600, key="mapa_full", 
+                     returned_objects=["last_object_clicked_popup", "last_clicked"], center=f_center, zoom=f_zoom)
+
+# Lógica de Novo Alfinete (Tocar no mapa)
+if map_data.get("last_clicked"):
+    coords_clicadas = (map_data["last_clicked"]["lat"], map_data["last_clicked"]["lng"])
+    st.info("📍 Novo ponto detectado! Digite o nome/número abaixo:")
+    novo_n = st.text_input("Número da Quadra:", key="input_alfinete")
+    if st.button("➕ SALVAR ALFINETE"):
+        st.session_state.pontos_extras[novo_n] = coords_clicadas
+        novo_id = f"{novo_n}_{len(st.session_state.lista_pacotes)}"
+        st.session_state.lista_pacotes.append({"id": novo_id, "nome": novo_n})
+        salvar_progresso(); st.rerun()
+
+# Painel de Ação (Clique no pino)
 if map_data.get("last_object_clicked_popup"):
-    if st.session_state.ponto_clicado != map_data["last_object_clicked_popup"]:
-        st.session_state.ponto_clicado = map_data["last_object_clicked_popup"]; st.rerun()
+    nome_sel = map_data["last_object_clicked_popup"]
+    if nome_sel in quadras_agrupadas:
+        info_q = quadras_agrupadas[nome_sel]
+        f_p = sum(1 for pid in info_q['pacotes'] if pid in st.session_state.entregues_id)
+        st.markdown(f"### 🎯 {nome_sel} ({f_p}/{len(info_q['pacotes'])})")
+        c_gps, c_done = st.columns(2)
+        with c_gps:
+            st.link_button("🚀 GPS", f"https://www.google.com/maps/dir/?api=1&destination={info_q['coords'][0]},{info_q['coords'][1]}")
+        with c_done:
+            id_p = next((pid for pid in info_q['pacotes'] if pid not in st.session_state.entregues_id), None)
+            if id_p:
+                if st.button("✅ FEITO"):
+                    st.session_state.entregues_id.append(id_p)
+                    st.session_state.ultima_pos = info_q['coords']
+                    salvar_progresso(); st.rerun()
 
-if st.session_state.lista_pacotes and proximo_ideal and not st.session_state.ponto_clicado:
+if st.session_state.lista_pacotes and proximo_ideal and not map_data.get("last_object_clicked_popup"):
     st.info(f"💡 Sugestão Próxima: **{proximo_ideal}**")
