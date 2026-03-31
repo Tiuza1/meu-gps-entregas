@@ -104,26 +104,43 @@ with st.expander("⚙️ CONFIGURAR ENTREGAS"):
         salvar_progresso(); st.rerun()
 
 # =================================================================
-# 5. LÓGICA DE PONTOS
+# 5. MONTAGEM DOS PONTOS PARA O MAPA (COM CORREÇÃO DE ERRO)
 # =================================================================
 pontos_mapa = []
 for p in st.session_state.lista_pacotes:
-    concluido = p['id'] in st.session_state.entregues_id
-    cor = "#28a745" if concluido else "#dc3545"
+    status_feito = p['id'] in st.session_state.entregues_id
+    cor = "#28a745" if status_feito else "#dc3545"
     
-    # Extrai o número do nome para o ícone (Ex: "Quadra 52" -> "52")
+    # --- CORREÇÃO DO ERRO AQUI ---
+    # Se lat/lng não existir no pacote salvo, busca no banco_total
+    lat = p.get('lat')
+    lng = p.get('lng')
+    
+    if lat is None or lng is None:
+        if p['nome'] in banco_total:
+            lat, lng = banco_total[p['nome']]
+        else:
+            lat, lng = 0, 0 # Valor padrão caso não encontre em lugar nenhum
+    # -----------------------------
+
     num = re.findall(r'\d+', p['nome'])
     label = num[0] if num else p['nome'][:2]
     
     pontos_mapa.append({
-        "id": p['id'], "lat": p['lat'], "lng": p['lng'], 
-        "nome": p['nome'], "concluido": concluido, "cor": cor, "label": label
+        "id": p['id'], "lat": lat, "lng": lng, 
+        "nome": p['nome'], "concluido": status_feito, "cor": cor, "label": label
     })
 
 # =================================================================
-# 6. MAPA
+# 6. MAPA LEAFLET
 # =================================================================
-centro = st.session_state.ultima_pos if st.session_state.ultima_pos else [-16.15, -47.96]
+# Usa o centro da primeira entrega caso não tenha última posição
+if st.session_state.ultima_pos:
+    centro = st.session_state.ultima_pos
+elif pontos_mapa:
+    centro = [pontos_mapa[0]['lat'], pontos_mapa[0]['lng']]
+else:
+    centro = [-16.15, -47.96] # Coordenada padrão (Brasília)
 
 mapa_html = f"""
 <!DOCTYPE html>
