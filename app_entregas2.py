@@ -189,12 +189,14 @@ if st.session_state.ultima_pos and pendentes:
 
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else [-16.15, -47.96]
 
+# --- O MAPA (COM O TRUQUE PARA APAGAR COMÉRCIOS) ---
+# O código '&apistyle=s.t:3|p.v:off' desliga a visibilidade dos pontos de interesse
 m = folium.Map(
     location=centro, 
     zoom_start=16, 
-    zoom_control=True, # Deixei o controle de zoom ativo para facilitar se preferir os botões +/-
-    tiles="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
-    attr="Google Maps"
+    zoom_control=False,
+    tiles="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&apistyle=s.t:3|p.v:off",
+    attr="Google Maps Limpo"
 )
 
 # Gatilho de GPS automático ao entregar
