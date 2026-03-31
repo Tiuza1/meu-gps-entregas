@@ -205,7 +205,7 @@ LocateControl(
     position='bottomleft', # Movido para o canto inferior esquerdo (longe da logo)
     auto_start=auto_gps, 
     fly_to=True, 
-    locate_options={"enableHighAccuracy": True, "maximumAge": 800, "maxZoom": 16} 
+    locate_options={"enableHighAccuracy": True, "maximumAge": 1000, "maxZoom": 10} 
 ).add_to(m)
 
 if auto_gps:
