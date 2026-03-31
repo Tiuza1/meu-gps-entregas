@@ -153,11 +153,12 @@ if st.session_state.ultima_pos and pendentes:
 
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else [-16.15, -47.96]
 
-# MAPA COM ESTILO QUE MANTÉM RUAS MAS TIRA ÍCONES DE COMÉRCIO
 m = folium.Map(
-    location=centro, zoom_start=16, zoom_control=False,
-    tiles="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&apistyle=s.t:3|p.v:off,s.t:1|p.v:on",
-    attr="Google Maps Limpo"
+    location=centro, 
+    zoom_start=16, 
+    zoom_control=True, # Deixei o controle de zoom ativo para facilitar se preferir os botões +/-
+    tiles="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
+    attr="Google Maps"
 )
 
 # CSS PARA SUBIR O BOTÃO DO GPS (Para não bater no painel de baixo)
