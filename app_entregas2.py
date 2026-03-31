@@ -5,7 +5,34 @@ import os
 import math
 
 # =================================================================
-# 0. PROCESSAMENTO DE AÇÕES DO POPUP (COMUNICAÇÃO JS -> PYTHON)
+# 1. INICIALIZAÇÃO DE MEMÓRIA (EXECUTAR ANTES DE TUDO)
+# =================================================================
+FILE_SAVE = "progresso_final.json"
+
+if 'lista_pacotes' not in st.session_state: st.session_state.lista_pacotes = []
+if 'entregues_id' not in st.session_state: st.session_state.entregues_id = []
+if 'ultima_pos' not in st.session_state: st.session_state.ultima_pos = None
+
+# Carregar do arquivo JSON se existir
+if not st.session_state.lista_pacotes and os.path.exists(FILE_SAVE):
+    try:
+        with open(FILE_SAVE, "r") as f:
+            d = json.load(f)
+            st.session_state.lista_pacotes = d.get("lista_pacotes", [])
+            st.session_state.entregues_id = d.get("entregues_id", [])
+            st.session_state.ultima_pos = d.get("ultima_pos")
+    except: pass
+
+def salvar_progresso():
+    dados = {
+        "lista_pacotes": st.session_state.lista_pacotes, 
+        "entregues_id": st.session_state.entregues_id, 
+        "ultima_pos": st.session_state.ultima_pos
+    }
+    with open(FILE_SAVE, "w") as f: json.dump(dados, f)
+
+# =================================================================
+# 2. PROCESSAMENTO DE AÇÕES DO POPUP (FEITO / EXCLUIR)
 # =================================================================
 qp = st.query_params
 if "action" in qp and "id" in qp:
@@ -15,35 +42,38 @@ if "action" in qp and "id" in qp:
     if action == "done":
         if item_id not in st.session_state.entregues_id:
             st.session_state.entregues_id.append(item_id)
+            # Atualiza referência de posição para o cálculo do próximo
             ponto = next((p for p in st.session_state.lista_pacotes if p['id'] == item_id), None)
             if ponto:
-                with open('Lugares marcados.json', 'r', encoding='utf-8') as f:
-                    dados_j = json.load(f)
-                    banco = {str(l['properties'].get('title') or l['properties'].get('name')).strip(): 
-                            (l['geometry']['coordinates'][1], l['geometry']['coordinates'][0]) 
-                            for l in dados_j.get('features',[])}
-                    st.session_state.ultima_pos = banco.get(ponto['nome'])
+                try:
+                    with open('Lugares marcados.json', 'r', encoding='utf-8') as f:
+                        db = json.load(f)
+                        for l in db.get('features', []):
+                            nome_b = str(l['properties'].get('title') or l['properties'].get('name')).strip()
+                            if nome_b == ponto['nome']:
+                                st.session_state.ultima_pos = (l['geometry']['coordinates'][1], l['geometry']['coordinates'][0])
+                                break
+                except: pass
 
     elif action == "delete":
         st.session_state.lista_pacotes = [p for p in st.session_state.lista_pacotes if p['id'] != item_id]
         if item_id in st.session_state.entregues_id:
             st.session_state.entregues_id.remove(item_id)
             
-    # Salva e Reinicia
-    dados = {"lista_pacotes": st.session_state.lista_pacotes, "entregues_id": st.session_state.entregues_id, "ultima_pos": st.session_state.ultima_pos}
-    with open("progresso_final.json", "w") as f: json.dump(dados, f)
-        
-    st.query_params.clear()
+    salvar_progresso()
+    st.query_params.clear() # Limpa a URL
     st.rerun()
 
 # =================================================================
-# 1. CONFIGURAÇÃO E MENU ESCURO
+# 3. CONFIGURAÇÃO DE TELA E CSS
 # =================================================================
 st.set_page_config(page_title="GPS Profissional", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
     <style>
     [data-testid="stHeader"], [data-testid="stToolbar"], footer { display: none !important; }
+    
+    /* ÍCONE DO MENU ESCURO NO TOPO ESQUERDO */
     [data-testid="stSidebarCollapsedControl"] {
         background-color: #1E1E1E !important;
         color: white !important;
@@ -55,32 +85,12 @@ st.markdown("""
         box-shadow: 0px 4px 10px rgba(0,0,0,0.4) !important;
     }
     [data-testid="stSidebarCollapsedControl"] svg { fill: white !important; width: 32px !important; height: 32px !important; }
+    
     .block-container { padding: 4.5rem 0.5rem 0.5rem 0.5rem !important; }
     .stButton>button { width: 100% !important; height: 50px !important; border-radius: 12px !important; font-weight: bold !important; }
     iframe { border: none !important; border-radius: 15px !important; }
     </style>
 """, unsafe_allow_html=True)
-
-# =================================================================
-# 2. MEMÓRIA DO SISTEMA
-# =================================================================
-FILE_SAVE = "progresso_final.json"
-if 'lista_pacotes' not in st.session_state: st.session_state.lista_pacotes = []
-if 'entregues_id' not in st.session_state: st.session_state.entregues_id = []
-if 'ultima_pos' not in st.session_state: st.session_state.ultima_pos = None
-
-def salvar_progresso():
-    dados = {"lista_pacotes": st.session_state.lista_pacotes, "entregues_id": st.session_state.entregues_id, "ultima_pos": st.session_state.ultima_pos}
-    with open(FILE_SAVE, "w") as f: json.dump(dados, f)
-
-if not st.session_state.lista_pacotes and os.path.exists(FILE_SAVE):
-    try:
-        with open(FILE_SAVE, "r") as f:
-            d = json.load(f)
-            st.session_state.lista_pacotes = d.get("lista_pacotes", [])
-            st.session_state.entregues_id = d.get("entregues_id", [])
-            st.session_state.ultima_pos = d.get("ultima_pos")
-    except: pass
 
 @st.cache_data
 def carregar_banco():
@@ -95,7 +105,7 @@ def carregar_banco():
 banco_total = carregar_banco()
 
 # =================================================================
-# 3. MENU LATERAL
+# 4. MENU LATERAL
 # =================================================================
 with st.sidebar:
     st.header("⚙️ Opções")
@@ -105,7 +115,7 @@ with st.sidebar:
         st.rerun()
 
 # =================================================================
-# 4. BUSCA E ADICIONAR
+# 5. BUSCA E ADICIONAR
 # =================================================================
 c1, c2 = st.columns([5, 1])
 with c1:
@@ -119,7 +129,7 @@ with c2:
             salvar_progresso(); st.rerun()
 
 # =================================================================
-# 5. LÓGICA DE QUAIS PONTOS MOSTRAR
+# 6. LÓGICA DE PONTOS E CORES
 # =================================================================
 proximo_id = None
 pontos_para_o_mapa = []
@@ -135,7 +145,9 @@ if st.session_state.ultima_pos and pendentes:
     m_dist = float('inf')
     for p in pendentes:
         d = math.sqrt((st.session_state.ultima_pos[0]-p['lat'])**2 + (st.session_state.ultima_pos[1]-p['lng'])**2)
-        if d < m_dist: m_dist = d; proximo_id = p['id']
+        if d < m_dist: 
+            m_dist = d
+            proximo_id = p['id']
 
 for p in pontos_para_o_mapa:
     if p['id'] == proximo_id: p['cor'] = "#fd7e14"
@@ -143,7 +155,7 @@ for p in pontos_para_o_mapa:
     p['txt'] = "✔" if p['concluido'] else num
 
 # =================================================================
-# 6. O MAPA RÁPIDO COM POPUP TRANSPARENTE
+# 7. MAPA COM POPUP TRANSPARENTE E AÇÕES
 # =================================================================
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else [-16.15, -47.96]
 
@@ -162,13 +174,13 @@ mapa_html = f"""
             color: white; font-weight: bold; font-family: sans-serif;
             border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);
         }}
+        /* POPUP TRANSPARENTE */
         .leaflet-popup-content-wrapper {{
-            background: rgba(255, 255, 255, 0.4) !important;
-            backdrop-filter: blur(10px);
+            background: rgba(255, 255, 255, 0.5) !important;
+            backdrop-filter: blur(12px);
             border-radius: 15px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }}
-        .leaflet-popup-tip {{ background: rgba(255, 255, 255, 0.4) !important; }}
         .popup-container {{
             display: flex; flex-direction: column; gap: 8px; padding: 5px; min-width: 140px;
         }}
@@ -202,13 +214,12 @@ mapa_html = f"""
                 iconSize: [38, 38], iconAnchor: [19, 19]
             }});
 
-            // Usamos links com target="_top" para garantir o funcionamento no celular
             var popupContent = `
                 <div class="popup-container">
                     <div class="popup-title">${{p.nome}}</div>
                     <a href="https://www.google.com/maps/dir/?api=1&destination=${{p.lat}},${{p.lng}}" target="_blank" class="btn btn-gps">🚀 GPS</a>
-                    <a href="./?action=done&id=${{p.id}}" target="_top" class="btn btn-done">✅ FEITO</a>
-                    <a href="./?action=delete&id=${{p.id}}" target="_top" class="btn btn-del">🗑️ EXCLUIR</a>
+                    <a href="?action=done&id=${{p.id}}" target="_top" class="btn btn-done">✅ FEITO</a>
+                    <a href="?action=delete&id=${{p.id}}" target="_top" class="btn btn-del">🗑️ EXCLUIR</a>
                 </div>
             `;
 
@@ -222,7 +233,8 @@ mapa_html = f"""
                 userMarker = L.circleMarker(e.latlng, {{
                     radius: 9, fillColor: "#4285F4", color: "white", weight: 3, opacity: 1, fillOpacity: 1
                 }}).addTo(map);
-                map.setView(e.latlng, 16); // Centraliza no GPS com zoom médio
+                // Centraliza no GPS apenas no primeiro carregamento ou após rerun
+                map.setView(e.latlng, 16); 
             }} else {{
                 userMarker.setLatLng(e.latlng);
             }}
@@ -239,5 +251,3 @@ st.components.v1.html(mapa_html, height=600)
 if pendentes:
     p_atual = next(p for p in pontos_para_o_mapa if p['id'] == proximo_id) if proximo_id else pendentes[0]
     st.info(f"💡 Sugestão: **{p_atual['nome']}**")
-
-salvar_progresso()
