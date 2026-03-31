@@ -5,7 +5,31 @@ import os
 import time
 
 # =================================================================
-# 1. CONFIGURAÇÃO E MEMÓRIA
+# 1. PROCESSAR AÇÃO (DEVE SER A PRIMEIRA COISA NO CÓDIGO)
+# =================================================================
+params = st.query_params
+if "action" in params and "id" in params:
+    # Salvamos o ID para marcar como feito antes de limpar a URL
+    action_item_id = str(params["id"])
+    action_type = params["action"]
+    
+    # Inicializa a lista se não existir para evitar erro no primeiro clique
+    if 'entregues_id' not in st.session_state: st.session_state.entregues_id = []
+    
+    if action_type == "done":
+        if action_item_id not in st.session_state.entregues_id:
+            st.session_state.entregues_id.append(action_item_id)
+            # Tenta centralizar no ponto que acabou de marcar
+            if 'lista_pacotes' in st.session_state:
+                p = next((x for x in st.session_state.lista_pacotes if str(x['id']) == action_item_id), None)
+                if p: st.session_state.ultima_pos = (p.get('lat'), p.get('lng'))
+
+    # Limpa a URL e recarrega para a interface ficar limpa
+    st.query_params.clear()
+    st.rerun()
+
+# =================================================================
+# 2. CONFIGURAÇÃO E MEMÓRIA
 # =================================================================
 st.set_page_config(page_title="Painel do Entregador", layout="wide")
 
@@ -45,25 +69,6 @@ if not st.session_state.lista_pacotes and os.path.exists(FILE_SAVE):
     except: pass
 
 # =================================================================
-# 2. PROCESSAR AÇÃO (O QUE FAZ O BOTÃO FUNCIONAR)
-# =================================================================
-# Pegamos os parâmetros da URL
-params = st.query_params
-if "action" in params and "id" in params:
-    item_id = str(params["id"])
-    if params["action"] == "done":
-        if item_id not in st.session_state.entregues_id:
-            st.session_state.entregues_id.append(item_id)
-            # Achar localização para centralizar o mapa
-            p = next((x for x in st.session_state.lista_pacotes if x['id'] == item_id), None)
-            if p: st.session_state.ultima_pos = (p.get('lat'), p.get('lng'))
-            salvar_progresso()
-    
-    # LIMPA A URL E RECARREGA (Importante para não bugar a interface)
-    st.query_params.clear()
-    st.rerun()
-
-# =================================================================
 # 3. ESTILOS VISUAIS
 # =================================================================
 st.markdown("""
@@ -84,7 +89,7 @@ with st.expander("⚙️ CONFIGURAR ROTA"):
     if st.button("➕ ADICIONAR"):
         if busca:
             coords = banco_total[busca]
-            nid = str(int(time.time() * 1000)) # ID único
+            nid = str(int(time.time() * 1000))
             st.session_state.lista_pacotes.append({"id": nid, "nome": busca, "lat": coords[0], "lng": coords[1]})
             salvar_progresso(); st.rerun()
     
@@ -98,15 +103,11 @@ with st.expander("⚙️ CONFIGURAR ROTA"):
 # =================================================================
 pontos_mapa = []
 for p in st.session_state.lista_pacotes:
-    feito = p['id'] in st.session_state.entregues_id
+    feito = str(p['id']) in st.session_state.entregues_id
     cor = "#28a745" if feito else "#dc3545"
-    lat, lng = p.get('lat'), p.get('lng')
-    
-    # Extrai o número para a bolinha
     num = re.findall(r'\d+', p['nome'])
     label = num[0] if num else p['nome'][:2]
-    
-    pontos_mapa.append({"id": p['id'], "lat": lat, "lng": lng, "nome": p['nome'], "concluido": feito, "cor": cor, "label": label})
+    pontos_mapa.append({"id": str(p['id']), "lat": p['lat'], "lng": p['lng'], "nome": p['nome'], "concluido": feito, "cor": cor, "label": label})
 
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else (pontos_mapa[0]['lat'], pontos_mapa[0]['lng']) if pontos_mapa else [-16.15, -47.96]
 
@@ -123,13 +124,14 @@ mapa_html = f"""
             width: 32px; height: 32px; border-radius: 50%; border: 2px solid white;
             display: flex; align-items: center; justify-content: center;
             color: white; font-weight: bold; font-family: sans-serif; font-size: 13px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.4);
         }}
-        .btn-done {{
-            background-color: #28a745; color: white; border: none; padding: 12px;
-            border-radius: 8px; width: 100%; font-weight: bold; font-size: 14px;
-            cursor: pointer; font-family: sans-serif; margin-top: 10px;
-            display: flex; align-items: center; justify-content: center; gap: 5px;
+        /* Estilo do link que parece um botão */
+        .btn-link {{
+            background-color: #28a745; color: white !important; 
+            padding: 12px; border-radius: 8px; width: 100%; 
+            font-weight: bold; font-size: 14px; text-decoration: none;
+            display: block; text-align: center; font-family: sans-serif;
+            margin-top: 10px; box-sizing: border-box;
         }}
     </style>
 </head>
@@ -143,6 +145,9 @@ mapa_html = f"""
 
         var pontos = {json.dumps(pontos_mapa)};
         
+        // Pega a URL atual sem os parâmetros antigos
+        var baseUrl = window.location.origin + window.location.pathname;
+
         pontos.forEach(function(p) {{
             var icon = L.divIcon({{
                 className: '',
@@ -150,29 +155,20 @@ mapa_html = f"""
                 iconSize: [32, 32], iconAnchor: [16, 16]
             }});
 
-            // FUNÇÃO JAVASCRIPT PARA CRIAR O LINK CORRETO
+            // O SEGREDO: target="_top" em um link comum <a>
             var popupContent = `
-                <div style="text-align:center; min-width:150px;">
-                    <b style="font-family:sans-serif; font-size:15px;">${{p.nome}}</b><br>
-                    <button class="btn-done" onclick="marcarEntregue('${{p.id}}')">
+                <div style="text-align:center; min-width:160px;">
+                    <b style="font-family:sans-serif;">${{p.nome}}</b><br>
+                    <a href="${{baseUrl}}?action=done&id=${{p.id}}" target="_top" class="btn-link">
                         ✅ MARCAR ENTREGUE
-                    </button>
+                    </a>
                 </div>`;
 
+            var marker = L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map);
             if (!p.concluido) {{
-                L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map).bindPopup(popupContent);
-            }} else {{
-                L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map);
+                marker.bindPopup(popupContent);
             }}
         }});
-
-        function marcarEntregue(id) {{
-            // Essa linha abaixo é a que faz a mágica de atualizar o Streamlit lá em cima
-            const url = new URL(window.parent.location.href);
-            url.searchParams.set('action', 'done');
-            url.searchParams.set('id', id);
-            window.parent.location.href = url.href;
-        }}
 
         map.locate({{setView: false, watch: true, enableHighAccuracy: true}});
         map.on('locationfound', function(e) {{
@@ -186,7 +182,7 @@ mapa_html = f"""
 st.components.v1.html(mapa_html, height=460)
 
 # =================================================================
-# 5. LISTA DE APOIO (CASO O MAPA FALHE)
+# 5. LISTA DE APOIO (OK FUNCIONANDO)
 # =================================================================
 st.subheader("📋 Roteiro")
 for p in pontos_mapa:
@@ -194,10 +190,12 @@ for p in pontos_mapa:
         with st.container():
             st.markdown(f'<div class="card-entrega"><strong>{p["nome"]}</strong></div>', unsafe_allow_html=True)
             c1, c2 = st.columns(2)
-            # Link Google Maps Nativo
             url_maps = f"https://www.google.com/maps/search/?api=1&query={p['lat']},{p['lng']}"
             c1.markdown(f'<a href="{url_maps}" target="_blank" style="background:#4285F4; color:white; text-decoration:none; padding:10px; border-radius:10px; display:block; text-align:center; font-weight:bold; font-size:14px;">📍 VER NO MAPS</a>', unsafe_allow_html=True)
             
+            # Esse botão OK já funciona pois é nativo do Streamlit
             if c2.button("✅ OK", key=f"btn_{p['id']}"):
                 st.query_params.update(action="done", id=p['id'])
                 st.rerun()
+
+salvar_progresso()
