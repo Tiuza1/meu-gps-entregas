@@ -19,7 +19,7 @@ except:
     st.error("Chave de API inválida.")
 
 # =================================================================
-# 2. CSS (Visual Limpo e Estável)
+# 2. CSS ANTI-BUG E INTERFACE
 # =================================================================
 st.set_page_config(page_title="GPS Multi-Pacotes", layout="wide", initial_sidebar_state="collapsed")
 
@@ -122,7 +122,6 @@ with c2:
             st.session_state.ultima_pos = banco_total[busca]
             salvar_progresso()
             
-            # Voa para a quadra recém-adicionada
             st.session_state.forcar_centro = banco_total[busca]
             st.session_state.forcar_zoom = 16
             st.rerun()
@@ -144,12 +143,12 @@ if st.session_state.ponto_clicado:
         f_p = sum(1 for pid in info_q['pacotes'] if pid in st.session_state.entregues_id)
         t_p = len(info_q['pacotes'])
         
-        st.info(f"**📍 {nome_sel}** — ({f_p}/{t_p} pacotes)")
+        st.info(f"**📍 Seleção: {nome_sel}** — ({f_p}/{t_p} pacotes concluídos)")
         
         c_gps, c_done, c_close = st.columns([2, 2, 1])
         with c_gps:
             lat, lon = info_q['coords']
-            st.link_button("🚀 GPS", f"https://www.google.com/maps/dir/?api=1&destination={lat},{lon}")
+            st.link_button("🚀 ABRIR GPS", f"https://www.google.com/maps/dir/?api=1&destination={lat},{lon}")
         with c_done:
             id_p = next((pid for pid in info_q['pacotes'] if pid not in st.session_state.entregues_id), None)
             if id_p:
@@ -160,8 +159,6 @@ if st.session_state.ponto_clicado:
                         st.session_state.ponto_clicado = None 
                     salvar_progresso()
                     
-                    # --- MAGIA DO VOO SUAVE ---
-                    # Quando clica em entregar, o mapa é forçado a focar aqui com zoom 16
                     st.session_state.forcar_centro = info_q['coords']
                     st.session_state.forcar_zoom = 16
                     st.rerun()
@@ -173,7 +170,7 @@ if st.session_state.ponto_clicado:
                 st.rerun()
 
 # =================================================================
-# 7. MAPA PRINCIPAL
+# 7. MAPA PRINCIPAL (BOLINHA AZUL FLUIDA)
 # =================================================================
 proximo_ideal = None
 pendentes =[n for n, d in quadras_agrupadas.items() if not all(pid in st.session_state.entregues_id for pid in d['pacotes'])]
@@ -191,12 +188,29 @@ centro = st.session_state.ultima_pos if st.session_state.ultima_pos else[-16.15,
 
 m = folium.Map(location=centro, zoom_start=16, zoom_control=False)
 
-# O SEGREDO DO BOTÃO DO GPS MANUAL CORRIGIDO:
-# "maxZoom": 16 -> Trava o zoom do GPS para ele não dar zoom no telhado.
+# INJEÇÃO CSS PARA A BOLINHA AZUL "DESLIZAR" EM VEZ DE TELEPORTAR
+suavizacao_bolinha = """
+<style>
+/* Força a transição suave de todos os vetores desenhados no mapa (incluindo a bolinha azul) */
+path.leaflet-interactive {
+    transition: d 0.8s linear, stroke-opacity 0.8s, fill-opacity 0.8s !important;
+}
+</style>
+"""
+m.get_root().html.add_child(folium.Element(suavizacao_bolinha))
+
+# CONFIGURAÇÃO DE GPS DE ALTA PERFORMANCE
 LocateControl(
     position='bottomright',
-    fly_to=True, 
-    locate_options={"enableHighAccuracy": True, "maxZoom": 16}
+    auto_start=True,        # O GPS já inicia rodando sozinho no fundo
+    setView='once',         # Foca em você a 1ª vez, mas não trava sua tela
+    locate_options={
+        "enableHighAccuracy": True, # Exige o máximo do chip GPS do celular
+        "watch": True,              # MODO VIGIA: Fica atualizando o tempo todo
+        "maximumAge": 500,          # Aceita só dados recentes (0.5s de atraso)
+        "timeout": 5000,            # Tenta conectar rápido
+        "maxZoom": 16               # Impede o zoom insano
+    }
 ).add_to(m)
 
 for nome, info in quadras_agrupadas.items():
@@ -215,8 +229,6 @@ for nome, info in quadras_agrupadas.items():
                     {txt}</div>"""
     folium.Marker(location=info['coords'], popup=nome, icon=folium.DivIcon(html=icon_html)).add_to(m)
 
-# O "POP" apaga a coordenada do gatilho logo após ser usada.
-# Isso impede o mapa de ficar travado nesse lugar se você quiser arrastar com o dedo depois.
 f_center = st.session_state.pop("forcar_centro", None)
 f_zoom = st.session_state.pop("forcar_zoom", None)
 
@@ -226,8 +238,8 @@ map_data = st_folium(
     height=650, 
     key="mapa_full", 
     returned_objects=["last_object_clicked_popup"],
-    center=f_center, # Se houver um comando de voo, ele aplica aqui
-    zoom=f_zoom      # Se houver um comando de zoom, ele aplica aqui
+    center=f_center,
+    zoom=f_zoom
 )
 
 if map_data.get("last_object_clicked_popup"):
