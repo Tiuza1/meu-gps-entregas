@@ -200,9 +200,20 @@ m = folium.Map(
 # Gatilho de GPS automático ao entregar
 auto_gps = st.session_state.get('trigger_gps', False)
 
+# --- INJEÇÃO DE CSS DENTRO DO MAPA PARA SUBIR O BOTÃO DO GPS ---
+css_gps = """
+<style>
+/* Empurra os controles do canto inferior esquerdo para cima */
+.leaflet-bottom.leaflet-left {
+    margin-bottom: 120px !important; /* Aumente este número se quiser subir mais */
+}
+</style>
+"""
+m.get_root().html.add_child(folium.Element(css_gps))
+
 # ---> CORREÇÃO DA POSIÇÃO DA BOLINHA DO GPS AQUI <---
 LocateControl(
-    position='bottomleft', # Movido para o canto inferior esquerdo (longe da logo)
+    position='bottomleft', 
     auto_start=auto_gps, 
     fly_to=True, 
     locate_options={"enableHighAccuracy": True, "maximumAge": 1000, "maxZoom": 10} 
