@@ -1,112 +1,120 @@
 import streamlit as st
 import json
-import os
 
-# CONFIGURAÇÃO
-st.set_page_config(page_title="GPS Profissional", layout="wide")
-API_KEY = 'AIzaSyCjmSTqrG7vnAkLiXVflhBffpuk_DwBWSY' # Use a mesma chave que já tem
+# 1. CONFIGURAÇÃO BÁSICA
+st.set_page_config(page_title="GPS Multi-Pacotes", layout="wide", initial_sidebar_state="collapsed")
+
+# Substitua pela sua chave real
+API_KEY = 'AIzaSyCjmSTqrG7vnAkLiXVflhBffpuk_DwBWSY' 
 
 # CSS para esconder o menu do Streamlit e focar no mapa
 st.markdown("""
     <style>
-    [data-testid="stHeader"], footer {display: none !important;}
+    [data-testid="stHeader"], [data-testid="stToolbar"], footer {display: none !important;}
     .block-container {padding: 0 !important;}
     iframe {border: none;}
     </style>
 """, unsafe_allow_html=True)
 
-# CARREGAR DADOS DAS QUADRAS
-def carregar_pontos():
+# 2. CARREGAR DADOS DO SEU JSON
+def carregar_banco():
     try:
         with open('Lugares marcados.json', 'r', encoding='utf-8') as f:
-            dados = json.load(f)
-        pontos = []
-        for feat in dados.get('features', []):
-            pontos.append({
-                "nome": feat['properties'].get('title') or feat['properties'].get('name'),
-                "lat": feat['geometry']['coordinates'][1],
-                "lng": feat['geometry']['coordinates'][0]
-            })
-        return pontos
+            dados_j = json.load(f)
+        return [{"nome": l['properties'].get('title', 'Sem nome'), 
+                 "lat": l['geometry']['coordinates'][1], 
+                 "lng": l['geometry']['coordinates'][0]} 
+                for l in dados_j.get('features',[])]
     except: return []
 
-pontos_quadras = carregar_pontos()
+banco_total = carregar_banco()
 
-# HTML + JAVASCRIPT (O segredo da bolinha lisa)
-# Esse código roda 100% no navegador do celular, sem travar
+# 3. O MAPA (GOOGLE MAPS JAVASCRIPT API)
+# Este código roda 100% no navegador, por isso é liso.
 mapa_html = f"""
 <!DOCTYPE html>
 <html>
 <head>
-    <script src="https://maps.googleapis.com/maps/api/js?key={API_KEY}&libraries=geometry"></script>
+    <script src="https://maps.googleapis.com/maps/api/js?key={API_KEY}"></script>
     <style>
         #map {{ height: 100vh; width: 100%; }}
         body {{ margin: 0; padding: 0; }}
+        #info-box {{
+            position: absolute; top: 10px; right: 10px;
+            background: rgba(0,0,0,0.8); color: white;
+            padding: 10px; border-radius: 5px; z-index: 1000;
+            font-family: sans-serif; font-size: 12px;
+        }}
     </style>
 </head>
 <body>
+    <div id="info-box"><b>MODO TESTE:</b><br>Clique no mapa para mover a bolinha azul.</div>
     <div id="map"></div>
+
     <script>
         let map;
         let userMarker;
-        const quadras = {json.dumps(pontos_quadras)};
+        const pontos = {json.dumps(banco_total)};
 
         function initMap() {{
-            // Inicia o mapa (Visão de cima)
+            // Inicia o mapa centralizado em Luziânia
             map = new google.maps.Map(document.getElementById("map"), {{
                 zoom: 16,
-                center: {{ lat: -16.15, lng: -47.96 }},
+                center: {{ lat: -16.25, lng: -47.95 }},
                 mapTypeId: 'roadmap',
-                disableDefaultUI: false,
-                zoomControl: true,
-                gestureHandling: "greedy"
+                gestureHandling: "greedy",
+                disableDefaultUI: false
             }});
 
-            // Desenha suas bolinhas (Quadras)
-            quadras.forEach(q => {{
+            // DESENHA AS QUADRAS (Bolinhas Vermelhas)
+            pontos.forEach(p => {{
                 new google.maps.Marker({{
-                    position: {{ lat: q.lat, lng: q.lng }},
+                    position: {{ lat: p.lat, lng: p.lng }},
                     map: map,
-                    title: q.nome,
                     icon: {{
                         path: google.maps.SymbolPath.CIRCLE,
                         fillColor: '#dc3545',
-                        fillOpacity: 0.9,
-                        strokeColor: '#fff',
-                        strokeWeight: 2,
-                        scale: 10
+                        fillOpacity: 1,
+                        strokeColor: 'white',
+                        strokeWeight: 1,
+                        scale: 8
                     }}
                 }});
             }});
 
-            // ATIVA O GPS REAL (O que roda liso)
+            // FUNÇÃO PARA ATUALIZAR A BOLINHA AZUL (GPS)
+            function atualizarGPS(pos) {{
+                if (!userMarker) {{
+                    userMarker = new google.maps.Marker({{
+                        position: pos,
+                        map: map,
+                        title: "Sua localização",
+                        icon: {{
+                            path: google.maps.SymbolPath.CIRCLE,
+                            fillColor: '#4285F4',
+                            fillOpacity: 1,
+                            strokeColor: 'white',
+                            strokeWeight: 2,
+                            scale: 10
+                        }}
+                    }});
+                }} else {{
+                    userMarker.setPosition(pos); // Move a bolinha de forma lisa
+                }}
+            }}
+
+            // TESTE: Clique no mapa e a bolinha azul vai para lá
+            map.addListener("click", (e) => {{
+                atualizarGPS(e.latLng);
+            }});
+
+            // GPS REAL: Ativa o rastreamento real se o navegador permitir
             if (navigator.geolocation) {{
                 navigator.geolocation.watchPosition(
-                    (position) => {{
-                        const pos = {{
-                            lat: position.coords.latitude,
-                            lng: position.coords.longitude
-                        }};
-                        
-                        if (!userMarker) {{
-                            // Cria a bolinha azul estilo Google Maps
-                            userMarker = new google.maps.Marker({{
-                                position: pos,
-                                map: map,
-                                icon: {{
-                                    path: google.maps.SymbolPath.CIRCLE,
-                                    fillColor: '#4285F4',
-                                    fillOpacity: 1,
-                                    strokeColor: 'white',
-                                    strokeWeight: 2,
-                                    scale: 8
-                                }}
-                            }});
-                        }} else {{
-                            userMarker.setPosition(pos);
-                        }}
+                    (p) => {{
+                        atualizarGPS({{ lat: p.coords.latitude, lng: p.coords.longitude }});
                     }},
-                    () => {{ console.log("Erro no GPS"); }},
+                    (err) => console.log("GPS Real aguardando clique ou sinal..."),
                     {{ enableHighAccuracy: true, maximumAge: 0 }}
                 );
             }}
@@ -117,5 +125,5 @@ mapa_html = f"""
 </html>
 """
 
-# Renderiza o mapa ocupando a tela toda
+# Renderiza o mapa ocupando a tela
 st.components.v1.html(mapa_html, height=800)
