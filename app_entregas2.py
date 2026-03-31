@@ -21,18 +21,29 @@ except:
 # =================================================================
 # 2. CSS ANTI-BUG E INTERFACE
 # =================================================================
-# initial_sidebar_state="expanded" para o menu não sumir
+# initial_sidebar_state="expanded" faz o menu começar aberto
 st.set_page_config(page_title="GPQuadras Pro", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
     <style>
+    /* Torna o botão de abrir o menu lateral (>) muito maior e mais visível */
+    [data-testid="stSidebarCollapsedControl"] {
+        background-color: #007BFF !important;
+        color: white !important;
+        border-radius: 0 10px 10px 0 !important;
+        width: 50px !important;
+        height: 50px !important;
+        top: 10px !important;
+    }
+    
     [data-testid="stHeader"] { background-color: transparent !important; }
     [data-testid="stToolbar"] { display: none !important; }
     footer { display: none !important; }
     .stApp { background-color: #f0f2f6 !important; }
-    .block-container { padding: 3rem 0.5rem 0.5rem 0.5rem !important; max-width: 100% !important; }
+    .block-container { padding: 4rem 0.5rem 0.5rem 0.5rem !important; max-width: 100% !important; }
     div[data-baseweb="select"] [role="option"]:first-child { display: none !important; }
     .stSelectbox label { display: none !important; }
+    
     .stButton>button {
         width: 100% !important; height: 55px !important; font-size: 16px !important; 
         font-weight: bold !important; border-radius: 12px !important;
@@ -101,7 +112,6 @@ with st.sidebar:
 
     st.markdown("---")
     
-    # BOTÃO SALVAR ROTA (DOWNLOAD TXT)
     if st.session_state.entregues_id:
         data_h = datetime.now().strftime("%d-%m-%Y")
         nomes_feitos = [p['nome'] for p in st.session_state.lista_pacotes if p['id'] in st.session_state.entregues_id]
@@ -109,7 +119,6 @@ with st.sidebar:
         for n in sorted(list(set(nomes_feitos))): relat += f"- {n}\n"
         st.download_button("💾 SALVAR ROTA (TXT)", data=relat, file_name=f"rota_{data_h}.txt")
 
-    # BOTÃO LIMPAR ROTA (ZERAR TUDO)
     if st.button("🗑️ LIMPAR ROTA (Zerar)"):
         if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
         st.session_state.lista_pacotes = []; st.session_state.entregues_id = []
@@ -117,7 +126,7 @@ with st.sidebar:
         st.rerun()
 
 # =================================================================
-# 5. BUSCA E LÓGICA DE AGRUPAMENTO
+# 5. BUSCA
 # =================================================================
 c1, c2 = st.columns([4, 1])
 with c1:
@@ -131,19 +140,17 @@ with c2:
             st.session_state.forcar_centro = banco_total[busca]; st.session_state.forcar_zoom = 16
             salvar_progresso(); st.rerun()
 
+# Lógica de Agrupamento
 quadras_agrupadas = {}
 for p in st.session_state.lista_pacotes:
     n = p['nome']
     if n not in quadras_agrupadas:
         coords = banco_total.get(n) or st.session_state.pontos_extras.get(n)
-        if coords:
-            quadras_agrupadas[n] = {"coords": coords, "pacotes": []}
-    if n in quadras_agrupadas:
-        quadras_agrupadas[n]['pacotes'].append(p['id'])
+        if coords: quadras_agrupadas[n] = {"coords": coords, "pacotes": []}
+    if n in quadras_agrupadas: quadras_agrupadas[n]['pacotes'].append(p['id'])
 
-# Sugestão Próxima
 proximo_ideal = None
-pendentes = [n for n, d in quadras_agrupadas.items() if not all(pid in st.session_state.entregues_id for pid in d['pacotes'])]
+pendentes =[n for n, d in quadras_agrupadas.items() if not all(pid in st.session_state.entregues_id for pid in d['pacotes'])]
 if st.session_state.ultima_pos and pendentes:
     menor_dist = float('inf')
     for n in pendentes:
@@ -152,7 +159,7 @@ if st.session_state.ultima_pos and pendentes:
         if dist < menor_dist: menor_dist = dist; proximo_ideal = n
 
 # =================================================================
-# 6. MAPA (GOOGLE LIMPO + TOCAR PARA MARCAR)
+# 6. MAPA
 # =================================================================
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else [-16.15, -47.96]
 
@@ -162,7 +169,6 @@ m = folium.Map(
     attr="Google Maps Limpo"
 )
 
-# GPS Alto e Bolinha Fluida
 m.get_root().html.add_child(folium.Element("<style>.leaflet-bottom.leaflet-left { margin-bottom: 160px !important; } path.leaflet-interactive { transition: d 0.8s linear !important; }</style>"))
 
 LocateControl(position='bottomleft', fly_to=True, locate_options={"enableHighAccuracy": True, "maximumAge": 500, "watch": True, "maxZoom": 16}).add_to(m)
@@ -182,18 +188,17 @@ f_zoom = st.session_state.pop("forcar_zoom", None)
 map_data = st_folium(m, use_container_width=True, height=600, key="mapa_full", 
                      returned_objects=["last_object_clicked_popup", "last_clicked"], center=f_center, zoom=f_zoom)
 
-# Lógica de Novo Alfinete (Tocar no mapa)
+# Lógica de Novo Alfinete
 if map_data.get("last_clicked"):
     coords_clicadas = (map_data["last_clicked"]["lat"], map_data["last_clicked"]["lng"])
-    st.info("📍 Novo ponto detectado! Digite o nome/número abaixo:")
+    st.info("📍 Novo alfinete detectado!")
     novo_n = st.text_input("Número da Quadra:", key="input_alfinete")
     if st.button("➕ SALVAR ALFINETE"):
         st.session_state.pontos_extras[novo_n] = coords_clicadas
-        novo_id = f"{novo_n}_{len(st.session_state.lista_pacotes)}"
-        st.session_state.lista_pacotes.append({"id": novo_id, "nome": novo_n})
+        st.session_state.lista_pacotes.append({"id": f"{novo_n}_{len(st.session_state.lista_pacotes)}", "nome": novo_n})
         salvar_progresso(); st.rerun()
 
-# Painel de Ação (Clique no pino)
+# Painel de Ação
 if map_data.get("last_object_clicked_popup"):
     nome_sel = map_data["last_object_clicked_popup"]
     if nome_sel in quadras_agrupadas:
