@@ -1,224 +1,187 @@
-import json
 import streamlit as st
-import re
+import json
 import os
 import math
 
-# =================================================================
-# 1. INICIALIZAÇÃO DE MEMÓRIA
-# =================================================================
-FILE_SAVE = "progresso_final.json"
+# --- CONFIGURAÇÕES INICIAIS ---
+st.set_page_config(page_title="GPS Entrega", layout="wide", initial_sidebar_state="collapsed")
+FILE_SAVE = "tarefas_ativas.json"
+DATABASE_FILE = 'Lugares marcados.json'
 
-if 'lista_pacotes' not in st.session_state: st.session_state.lista_pacotes = []
-if 'entregues_id' not in st.session_state: st.session_state.entregues_id = []
-if 'ultima_pos' not in st.session_state: st.session_state.ultima_pos = None
-
-# Função para carregar o banco de dados (colocada antes para ser usada no processamento)
-def carregar_banco():
+# --- 1. CARREGAR BANCO DE DADOS FIXO ---
+@st.cache_data
+def carregar_banco_completo():
+    if not os.path.exists(DATABASE_FILE):
+        return {}
     try:
-        with open('Lugares marcados.json', 'r', encoding='utf-8') as f:
-            dados_j = json.load(f)
-        return {str(l['properties'].get('title') or l['properties'].get('name')).strip(): 
-                (l['geometry']['coordinates'][1], l['geometry']['coordinates'][0]) 
-                for l in dados_j.get('features',[])}
-    except: return {}
+        with open(DATABASE_FILE, 'r', encoding='utf-8') as f:
+            dados = json.load(f)
+        banco = {}
+        for feature in dados.get('features', []):
+            nome = str(feature['properties'].get('title') or feature['properties'].get('name')).strip()
+            coords = feature['geometry']['coordinates']
+            banco[nome] = {"lat": coords[1], "lng": coords[0]}
+        return banco
+    except:
+        return {}
 
-banco_total = carregar_banco()
+BANCO_COORDS = carregar_banco_completo()
 
-if not st.session_state.lista_pacotes and os.path.exists(FILE_SAVE):
-    try:
+# --- 2. GERENCIAMENTO DE ESTADO (MEMÓRIA) ---
+if 'pontos_ativos' not in st.session_state:
+    if os.path.exists(FILE_SAVE):
         with open(FILE_SAVE, "r") as f:
-            d = json.load(f)
-            st.session_state.lista_pacotes = d.get("lista_pacotes", [])
-            st.session_state.entregues_id = d.get("entregues_id", [])
-            st.session_state.ultima_pos = d.get("ultima_pos")
-    except: pass
+            st.session_state.pontos_ativos = json.load(f)
+    else:
+        st.session_state.pontos_ativos = []
 
-def salvar_progresso():
-    dados = {
-        "lista_pacotes": st.session_state.lista_pacotes, 
-        "entregues_id": st.session_state.entregues_id, 
-        "ultima_pos": st.session_state.ultima_pos
-    }
-    with open(FILE_SAVE, "w") as f: json.dump(dados, f)
+if 'ultima_pos' not in st.session_state:
+    st.session_state.ultima_pos = [-16.15, -47.96] # Ponto padrão
 
-# =================================================================
-# 2. PROCESSAMENTO DE AÇÕES (FEITO / EXCLUIR) -> AGORA APAGAM DO MAPA
-# =================================================================
-qp = st.query_params
-if "action" in qp and "id" in qp:
-    action = qp["action"]
-    item_id = qp["id"]
+def salvar():
+    with open(FILE_SAVE, "w") as f:
+        json.dump(st.session_state.pontos_ativos, f)
+
+# --- 3. PROCESSAR AÇÕES DOS BOTÕES (VIA URL) ---
+query_params = st.query_params
+if "action" in query_params and "nome" in query_params:
+    action = query_params["action"]
+    nome_alvo = query_params["nome"]
     
-    # Busca o ponto antes de qualquer alteração
-    ponto_atual = next((p for p in st.session_state.lista_pacotes if p['id'] == item_id), None)
-    
+    # Se clicar em FEITO, atualiza a última posição para cálculo de distância
     if action == "done":
-        if ponto_atual:
-            # 1. Atualiza a última posição para o cálculo do próximo destino
-            coords = banco_total.get(ponto_atual['nome'])
-            if coords:
-                st.session_state.ultima_pos = coords
-            
-            # 2. Adiciona ao histórico de entregues
-            if item_id not in st.session_state.entregues_id:
-                st.session_state.entregues_id.append(item_id)
-            
-            # 3. REMOVE da lista principal (isso faz sumir do mapa)
-            st.session_state.lista_pacotes = [p for p in st.session_state.lista_pacotes if p['id'] != item_id]
-
-    elif action == "delete":
-        # Apenas remove da lista principal e do histórico
-        st.session_state.lista_pacotes = [p for p in st.session_state.lista_pacotes if p['id'] != item_id]
-        if item_id in st.session_state.entregues_id:
-            st.session_state.entregues_id.remove(item_id)
-            
-    salvar_progresso()
+        if nome_alvo in BANCO_COORDS:
+            st.session_state.ultima_pos = [BANCO_COORDS[nome_alvo]['lat'], BANCO_COORDS[nome_alvo]['lng']]
+    
+    # EM AMBOS OS CASOS (FEITO OU EXCLUIR), O PONTO É REMOVIDO DA LISTA
+    st.session_state.pontos_ativos = [p for p in st.session_state.pontos_ativos if p != nome_alvo]
+    
+    salvar()
     st.query_params.clear()
     st.rerun()
 
-# =================================================================
-# 3. CONFIGURAÇÃO DE TELA E CSS
-# =================================================================
-st.set_page_config(page_title="GPS Profissional", layout="wide", initial_sidebar_state="collapsed")
-
+# --- 4. INTERFACE UI ---
 st.markdown("""
     <style>
-    [data-testid="stHeader"],[data-testid="stToolbar"], footer { display: none !important; }
-    [data-testid="stSidebarCollapsedControl"] {
-        background-color: #1E1E1E !important; color: white !important; border-radius: 10px !important;
-        width: 55px !important; height: 55px !important; top: 8px !important; left: 8px !important;
-        z-index: 1000000 !important; display: flex !important; align-items: center !important; justify-content: center !important;
-        box-shadow: 0px 4px 10px rgba(0,0,0,0.4) !important;
-    }
-    [data-testid="stSidebarCollapsedControl"] svg { fill: white !important; width: 32px !important; height: 32px !important; }
-    .block-container { padding: 4.5rem 0.5rem 0.5rem 0.5rem !important; }
-    iframe { border: none !important; border-radius: 15px !important; }
+    [data-testid="stHeader"], footer { display: none !important; }
+    .block-container { padding: 1rem !important; }
+    iframe { border-radius: 15px; border: 2px solid #333; }
     </style>
 """, unsafe_allow_html=True)
 
-# =================================================================
-# 4. MENU LATERAL E BUSCA
-# =================================================================
+# Barra lateral para limpar tudo
 with st.sidebar:
-    st.header("⚙️ Opções")
-    if st.button("🗑️ LIMPAR TUDO"):
-        if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
-        st.session_state.lista_pacotes = []; st.session_state.entregues_id = []; st.session_state.ultima_pos = None
+    if st.button("🗑️ LIMPAR TODA LISTA"):
+        st.session_state.pontos_ativos = []
+        salvar()
         st.rerun()
 
-c1, c2 = st.columns([5, 1])
+# Barra de busca e adição
+c1, c2 = st.columns([4, 1])
 with c1:
-    busca = st.selectbox("Busca", options=["(Adicionar...)"] + list(banco_total.keys()), label_visibility="collapsed")
+    opcao = st.selectbox("Buscar Quadra/Lugar", [""] + list(BANCO_COORDS.keys()), label_visibility="collapsed")
 with c2:
     if st.button("➕"):
-        if busca and busca != "(Adicionar...)":
-            nid = f"{busca}_{len(st.session_state.lista_pacotes)}_{math.floor(st.session_state.ultima_pos[0] if st.session_state.ultima_pos else 0)}"
-            st.session_state.lista_pacotes.append({"id": nid, "nome": busca})
-            salvar_progresso(); st.rerun()
+        if opcao and opcao not in st.session_state.pontos_ativos:
+            st.session_state.pontos_ativos.append(opcao)
+            salvar()
+            st.rerun()
 
-# =================================================================
-# 5. LÓGICA DE PONTOS (CÁLCULO DO MAIS PRÓXIMO)
-# =================================================================
-pontos_para_o_mapa = []
-for p in st.session_state.lista_pacotes:
-    coords = banco_total.get(p['nome'], (0,0))
-    # Como agora removemos os feitos, todos aqui são Pendentes (Vermelhos)
-    pontos_para_o_mapa.append({
-        "id": p['id'], "lat": coords[0], "lng": coords[1], 
-        "nome": p['nome'], "cor": "#dc3545"
-    })
+# --- 5. PREPARAR DADOS PARA O MAPA ---
+map_data = []
+proximo_nome = None
+menor_dist = float('inf')
 
-proximo_id = None
-if st.session_state.ultima_pos and pontos_para_o_mapa:
-    m_dist = float('inf')
-    for p in pontos_para_o_mapa:
-        d = math.sqrt((st.session_state.ultima_pos[0]-p['lat'])**2 + (st.session_state.ultima_pos[1]-p['lng'])**2)
-        if d < m_dist: 
-            m_dist = d
-            proximo_id = p['id']
+for nome in st.session_state.pontos_ativos:
+    if nome in BANCO_COORDS:
+        info = BANCO_COORDS[nome]
+        # Cálculo básico de distância para achar o mais próximo
+        d = math.sqrt((st.session_state.ultima_pos[0]-info['lat'])**2 + (st.session_state.ultima_pos[1]-info['lng'])**2)
+        
+        map_data.append({
+            "nome": nome,
+            "lat": info['lat'],
+            "lng": info['lng'],
+            "dist": d
+        })
+        
+        if d < menor_dist:
+            menor_dist = d
+            proximo_nome = nome
 
-for p in pontos_para_o_mapa:
-    if p['id'] == proximo_id: p['cor'] = "#fd7e14" # Laranja para o próximo
-    num = re.findall(r'\d+', p['nome'])[0] if re.findall(r'\d+', p['nome']) else p['nome'][:2]
-    p['txt'] = num
-
-# =================================================================
-# 6. MAPA
-# =================================================================
-centro = st.session_state.ultima_pos if st.session_state.ultima_pos else [-16.15, -47.96]
-
-mapa_html = f"""
+# --- 6. MAPA HTML/JS ---
+html_mapa = f"""
 <!DOCTYPE html>
 <html>
 <head>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        #map {{ height: 100vh; width: 100%; background: #e5e3df; }}
-        body {{ margin: 0; padding: 0; }}
+        #map {{ height: 100vh; width: 100%; border-radius: 15px; }}
+        body {{ margin: 0; }}
         .pin {{
-            width: 38px; height: 38px; border-radius: 50%;
+            width: 35px; height: 35px; border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
             color: white; font-weight: bold; font-family: sans-serif;
-            border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-            font-size: 16px;
+            border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.4);
         }}
-        .leaflet-popup-content-wrapper {{
-            background: rgba(255, 255, 255, 0.7) !important;
-            backdrop-filter: blur(12px); border-radius: 15px;
-        }}
-        .popup-container {{ display: flex; flex-direction: column; gap: 8px; padding: 5px; min-width: 140px; }}
-        .popup-title {{ font-weight: bold; text-align: center; font-size: 14px; font-family: sans-serif; }}
+        .popup-card {{ font-family: sans-serif; text-align: center; padding: 5px; }}
         .btn {{
-            text-decoration: none; border-radius: 8px; padding: 12px; color: white;
-            font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center;
-            font-size: 13px; font-family: sans-serif;
+            display: block; padding: 10px; margin-top: 5px;
+            color: white; text-decoration: none; border-radius: 5px; font-weight: bold;
         }}
-        .btn-gps {{ background: #1E1E1E; }}
-        .btn-done {{ background: #28a745; }}
-        .btn-del {{ background: #dc3545; }}
     </style>
 </head>
 <body>
     <div id="map"></div>
     <script>
-        var map = L.map('map', {{ zoomControl: false }}).setView([{centro[0]}, {centro[1]}], 16);
+        var map = L.map('map', {{ zoomControl: false }}).setView([{st.session_state.ultima_pos[0]}, {st.session_state.ultima_pos[1]}], 15);
+        
         L.tileLayer('http://{{s}}.google.com/vt/lyrs=m&x={{x}}&y={{y}}&z={{z}}', {{
             maxZoom: 20, subdomains:['mt0','mt1','mt2','mt3']
         }}).addTo(map);
 
-        var pontos = {json.dumps(pontos_para_o_mapa)};
+        var pontos = {json.dumps(map_data)};
+        var proximo = "{proximo_nome}";
+
         pontos.forEach(function(p) {{
+            var cor = (p.nome === proximo) ? "#fd7e14" : "#dc3545";
+            
             var icon = L.divIcon({{
                 className: '',
-                html: '<div class="pin" style="background:'+p.cor+'">'+p.txt+'</div>',
-                iconSize: [38, 38], iconAnchor: [19, 19]
+                html: `<div class="pin" style="background: ${{cor}};">${{p.nome.substring(0,2)}}</div>`,
+                iconSize: [35, 35], iconAnchor: [17, 17]
             }});
 
-            var popupContent = `
-                <div class="popup-container">
-                    <div class="popup-title">${{p.nome}}</div>
-                    <a href="https://www.google.com/maps/dir/?api=1&destination=${{p.lat}},${{p.lng}}" target="_blank" class="btn btn-gps">🚀 GPS</a>
-                    <a href="#" onclick="window.parent.location.search='?action=done&id=${{p.id}}'; return false;" class="btn btn-done">✅ FEITO</a>
-                    <a href="#" onclick="window.parent.location.search='?action=delete&id=${{p.id}}'; return false;" class="btn btn-del">🗑️ EXCLUIR</a>
+            var content = `
+                <div class="popup-card">
+                    <b>${{p.nome}}</b><br>
+                    <a href="https://www.google.com/maps/dir/?api=1&destination=${{p.lat}},${{p.lng}}" target="_blank" class="btn" style="background:#1E1E1E;">🚀 GPS</a>
+                    <a href="#" onclick="window.parent.location.search='?action=done&nome=${{p.nome}}'; return false;" class="btn" style="background:#28a745;">✅ FEITO</a>
+                    <a href="#" onclick="window.parent.location.search='?action=delete&nome=${{p.nome}}'; return false;" class="btn" style="background:#dc3545;">🗑️ EXCLUIR</a>
                 </div>
             `;
 
-            L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map).bindPopup(popupContent);
+            L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map).bindPopup(content);
         }});
 
-        map.locate({{ watch: true, enableHighAccuracy: true, setView: false }});
+        // Localização em tempo real do usuário
+        map.locate({{watch: true, enableHighAccuracy: true}});
         map.on('locationfound', function(e) {{
-            L.circleMarker(e.latlng, {{ radius: 8, fillColor: "#4285F4", color: "white", fillOpacity: 1 }}).addTo(map);
+            if (!window.userCircle) {{
+                window.userCircle = L.circleMarker(e.latlng, {{radius: 8, color: 'white', fillColor: '#4285F4', fillOpacity: 1, weight: 3}}).addTo(map);
+            }} else {{
+                window.userCircle.setLatLng(e.latlng);
+            }}
         }});
     </script>
 </body>
 </html>
 """
 
-st.components.v1.html(mapa_html, height=600)
+st.components.v1.html(html_mapa, height=600)
 
-if pontos_para_o_mapa:
-    p_atual = next((p for p in pontos_para_o_mapa if p['id'] == proximo_id), pontos_para_o_mapa[0])
-    st.info(f"💡 Próxima parada sugerida: **{p_atual['nome']}**")
+if proximo_nome:
+    st.success(f"📍 Próximo objetivo: **{proximo_nome}**")
+else:
+    st.info("Nenhum ponto pendente. Adicione uma quadra acima 👆")
