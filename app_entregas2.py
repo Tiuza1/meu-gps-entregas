@@ -186,7 +186,14 @@ if st.session_state.ultima_pos and pendentes:
 
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else[-16.15, -47.96]
 
-m = folium.Map(location=centro, zoom_start=16, zoom_control=False)
+# O 'tiles' força o uso do servidor oficial de ruas do Google Maps
+m = folium.Map(
+    location=centro, 
+    zoom_start=16, 
+    zoom_control=False,
+    tiles="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
+    attr="Google Maps"
+)
 
 # INJEÇÃO CSS PARA A BOLINHA AZUL "DESLIZAR" EM VEZ DE TELEPORTAR
 suavizacao_bolinha = """
