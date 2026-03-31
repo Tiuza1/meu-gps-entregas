@@ -36,6 +36,14 @@ st.markdown("""
         width: 100% !important; height: 55px !important; font-size: 16px !important; 
         font-weight: bold !important; border-radius: 12px !important;
     }
+    /* Estilo específico para o botão de download no menu lateral */
+    .stDownloadButton>button {
+        background-color: #28a745 !important;
+        color: white !important;
+        width: 100% !important; 
+        height: 55px !important;
+        border-radius: 12px !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -80,10 +88,10 @@ def carregar_banco():
 banco_total = carregar_banco()
 
 # =================================================================
-# 4. MENU LATERAL E BUSCA
+# 4. MENU LATERAL (CONFIGURAÇÕES, SALVAR E LIMPAR)
 # =================================================================
 with st.sidebar:
-    st.title("⚙️ Configurações")
+    st.title("⚙️ Menu de Rota")
     base_input = st.text_input("📍 Início da Rota:", "Luziânia, GO")
     if st.button("🗺️ DEFINIR INÍCIO"):
         geo = gmaps.geocode(base_input)
@@ -91,10 +99,43 @@ with st.sidebar:
             st.session_state.ultima_pos = (geo[0]['geometry']['location']['lat'], geo[0]['geometry']['location']['lng'])
             salvar_progresso()
             st.rerun()
-    if st.button("🗑️ ZERAR TUDO"):
-        if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
-        st.session_state.lista_pacotes =[]; st.session_state.entregues_id =[]; st.rerun()
+    
+    st.markdown("---")
+    
+    # FUNCIONALIDADE: SALVAR ROTA (Relatório TXT)
+    if st.session_state.entregues_id:
+        data_hoje = datetime.now().strftime("%d-%m-%Y")
+        # Gera a lista de nomes das quadras concluídas
+        nomes_concluidos = []
+        for p in st.session_state.lista_pacotes:
+            if p['id'] in st.session_state.entregues_id:
+                nomes_concluidos.append(p['nome'])
+        
+        relatorio = f"RELATÓRIO DE ENTREGAS - {data_hoje}\n"
+        relatorio += f"Total de pacotes: {len(st.session_state.entregues_id)}\n\n"
+        relatorio += "QUADRAS CONCLUÍDAS:\n"
+        for nome in sorted(list(set(nomes_concluidos))):
+            relatorio += f"- {nome}\n"
+        
+        st.download_button(
+            label="💾 SALVAR ROTA (Baixar TXT)",
+            data=relatorio,
+            file_name=f"rota_{data_hoje}.txt",
+            mime="text/plain"
+        )
 
+    # FUNCIONALIDADE: LIMPAR ROTA (Zerar)
+    if st.button("🗑️ LIMPAR ROTA (Zerar Tudo)"):
+        if os.path.exists(FILE_SAVE): 
+            os.remove(FILE_SAVE)
+        st.session_state.lista_pacotes = []
+        st.session_state.entregues_id = []
+        st.session_state.ponto_clicado = None
+        st.rerun()
+
+# =================================================================
+# 5. BUSCA E PAINEL DE AÇÃO
+# =================================================================
 c1, c2 = st.columns([4, 1])
 with c1:
     busca = st.selectbox("Busca", options=["(Adicionar Quadra...)"] + list(banco_total.keys()), label_visibility="collapsed")
@@ -107,9 +148,6 @@ with c2:
             st.session_state.forcar_centro = banco_total[busca]; st.session_state.forcar_zoom = 16
             salvar_progresso(); st.rerun()
 
-# =================================================================
-# 5. PAINEL DE AÇÃO
-# =================================================================
 quadras_agrupadas = {}
 for p in st.session_state.lista_pacotes:
     n = p['nome']
@@ -140,7 +178,7 @@ if st.session_state.ponto_clicado:
             if st.button("✖️"): st.session_state.ponto_clicado = None; st.rerun()
 
 # =================================================================
-# 6. MAPA (GOOGLE MAPS LIMPO + GPS MAIS ALTO)
+# 6. MAPA E LÓGICA
 # =================================================================
 proximo_ideal = None
 pendentes =[n for n, d in quadras_agrupadas.items() if not all(pid in st.session_state.entregues_id for pid in d['pacotes'])]
@@ -152,27 +190,11 @@ if st.session_state.ultima_pos and pendentes:
         if dist < menor_dist: menor_dist = dist; proximo_ideal = n
 
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else [-16.15, -47.96]
+m = folium.Map(location=centro, zoom_start=16, zoom_control=True, tiles="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}", attr="Google Maps")
 
-m = folium.Map(
-    location=centro, 
-    zoom_start=16, 
-    zoom_control=True, # Deixei o controle de zoom ativo para facilitar se preferir os botões +/-
-    tiles="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
-    attr="Google Maps"
-)
+m.get_root().html.add_child(folium.Element("""<style>.leaflet-bottom.leaflet-left { margin-bottom: 150px !important; } path.leaflet-interactive { transition: d 0.8s linear !important; }</style>"""))
 
-# CSS PARA SUBIR O BOTÃO DO GPS (Para não bater no painel de baixo)
-m.get_root().html.add_child(folium.Element("""
-<style>
-.leaflet-bottom.leaflet-left { margin-bottom: 150px !important; }
-path.leaflet-interactive { transition: d 0.8s linear !important; }
-</style>
-"""))
-
-LocateControl(
-    position='bottomleft', fly_to=True, 
-    locate_options={"enableHighAccuracy": True, "maximumAge": 500, "watch": True, "maxZoom": 16}
-).add_to(m)
+LocateControl(position='bottomleft', fly_to=True, locate_options={"enableHighAccuracy": True, "maximumAge": 500, "watch": True, "maxZoom": 16}).add_to(m)
 
 for nome, info in quadras_agrupadas.items():
     t_p = len(info['pacotes']); f_p = sum(1 for pid in info['pacotes'] if pid in st.session_state.entregues_id)
@@ -180,9 +202,7 @@ for nome, info in quadras_agrupadas.items():
     cor = "#28a745" if concluido else ("#fd7e14" if nome == proximo_ideal else "#dc3545")
     borda = "4px solid #007bff" if (t_p > 1 and not concluido) else "2px solid white"
     txt = "✔" if concluido else (f"{num}<br><small>x{t_p}</small>" if t_p > 1 else num)
-    icon_html = f"""<div style="background-color:{cor}; width:42px; height:42px; border-radius:50%; display:flex; 
-                    flex-direction:column; align-items:center; justify-content:center; color:white; font-weight:bold; 
-                    border:{borda}; box-shadow: 2px 2px 8px rgba(0,0,0,0.3); opacity:{'0.5' if concluido else '1.0'}; line-height:1;">{txt}</div>"""
+    icon_html = f"""<div style="background-color:{cor}; width:42px; height:42px; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; color:white; font-weight:bold; border:{borda}; box-shadow: 2px 2px 8px rgba(0,0,0,0.3); opacity:{'0.5' if concluido else '1.0'}; line-height:1;">{txt}</div>"""
     folium.Marker(location=info['coords'], popup=nome, icon=folium.DivIcon(html=icon_html)).add_to(m)
 
 f_center = st.session_state.pop("forcar_centro", None)
