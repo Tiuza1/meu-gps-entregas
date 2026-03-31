@@ -7,8 +7,6 @@ import math
 # =================================================================
 # 0. PROCESSAMENTO DE AÇÕES DO POPUP (COMUNICAÇÃO JS -> PYTHON)
 # =================================================================
-# Captura cliques feitos dentro do HTML do mapa através da URL
-# Colocamos no topo para processar antes de desenhar o mapa
 qp = st.query_params
 if "action" in qp and "id" in qp:
     action = qp["action"]
@@ -17,10 +15,8 @@ if "action" in qp and "id" in qp:
     if action == "done":
         if item_id not in st.session_state.entregues_id:
             st.session_state.entregues_id.append(item_id)
-            # Define a última posição para o ponto marcado como feito
             ponto = next((p for p in st.session_state.lista_pacotes if p['id'] == item_id), None)
             if ponto:
-                # Busca coordenadas no banco para atualizar a referência de distância
                 with open('Lugares marcados.json', 'r', encoding='utf-8') as f:
                     dados_j = json.load(f)
                     banco = {str(l['properties'].get('title') or l['properties'].get('name')).strip(): 
@@ -33,16 +29,10 @@ if "action" in qp and "id" in qp:
         if item_id in st.session_state.entregues_id:
             st.session_state.entregues_id.remove(item_id)
             
-    # Salva as mudanças no arquivo JSON imediatamente
-    dados = {
-        "lista_pacotes": st.session_state.lista_pacotes, 
-        "entregues_id": st.session_state.entregues_id, 
-        "ultima_pos": st.session_state.ultima_pos
-    }
-    with open("progresso_final.json", "w") as f: 
-        json.dump(dados, f)
+    # Salva e Reinicia
+    dados = {"lista_pacotes": st.session_state.lista_pacotes, "entregues_id": st.session_state.entregues_id, "ultima_pos": st.session_state.ultima_pos}
+    with open("progresso_final.json", "w") as f: json.dump(dados, f)
         
-    # Limpa a URL e reinicia para resetar o mapa e focar no GPS
     st.query_params.clear()
     st.rerun()
 
@@ -54,23 +44,17 @@ st.set_page_config(page_title="GPS Profissional", layout="wide", initial_sidebar
 st.markdown("""
     <style>
     [data-testid="stHeader"], [data-testid="stToolbar"], footer { display: none !important; }
-
     [data-testid="stSidebarCollapsedControl"] {
         background-color: #1E1E1E !important;
         color: white !important;
         border-radius: 10px !important;
-        width: 55px !important;
-        height: 55px !important;
-        top: 8px !important;
-        left: 8px !important;
+        width: 55px !important; height: 55px !important;
+        top: 8px !important; left: 8px !important;
         z-index: 1000000 !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
+        display: flex !important; align-items: center !important; justify-content: center !important;
         box-shadow: 0px 4px 10px rgba(0,0,0,0.4) !important;
     }
     [data-testid="stSidebarCollapsedControl"] svg { fill: white !important; width: 32px !important; height: 32px !important; }
-
     .block-container { padding: 4.5rem 0.5rem 0.5rem 0.5rem !important; }
     .stButton>button { width: 100% !important; height: 50px !important; border-radius: 12px !important; font-weight: bold !important; }
     iframe { border: none !important; border-radius: 15px !important; }
@@ -81,7 +65,6 @@ st.markdown("""
 # 2. MEMÓRIA DO SISTEMA
 # =================================================================
 FILE_SAVE = "progresso_final.json"
-
 if 'lista_pacotes' not in st.session_state: st.session_state.lista_pacotes = []
 if 'entregues_id' not in st.session_state: st.session_state.entregues_id = []
 if 'ultima_pos' not in st.session_state: st.session_state.ultima_pos = None
@@ -152,9 +135,7 @@ if st.session_state.ultima_pos and pendentes:
     m_dist = float('inf')
     for p in pendentes:
         d = math.sqrt((st.session_state.ultima_pos[0]-p['lat'])**2 + (st.session_state.ultima_pos[1]-p['lng'])**2)
-        if d < m_dist: 
-            m_dist = d
-            proximo_id = p['id']
+        if d < m_dist: m_dist = d; proximo_id = p['id']
 
 for p in pontos_para_o_mapa:
     if p['id'] == proximo_id: p['cor'] = "#fd7e14"
@@ -193,7 +174,7 @@ mapa_html = f"""
         }}
         .popup-title {{ font-weight: bold; text-align: center; margin-bottom: 5px; font-size: 14px; color: #1E1E1E; font-family: sans-serif; }}
         .btn {{
-            border: none; border-radius: 8px; padding: 12px; color: white;
+            text-decoration: none; border: none; border-radius: 8px; padding: 12px; color: white;
             font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
             transition: 0.2s; font-size: 13px; font-family: sans-serif;
         }}
@@ -214,12 +195,6 @@ mapa_html = f"""
         var pontos = {json.dumps(pontos_para_o_mapa)};
         var userMarker;
 
-        // Função corrigida para alterar a URL da página principal
-        function sendAction(action, id) {{
-            const topUrl = window.top.location.href.split('?')[0];
-            window.top.location.href = topUrl + "?action=" + action + "&id=" + id;
-        }}
-
         pontos.forEach(function(p) {{
             var icon = L.divIcon({{
                 className: '',
@@ -227,12 +202,13 @@ mapa_html = f"""
                 iconSize: [38, 38], iconAnchor: [19, 19]
             }});
 
+            // Usamos links com target="_top" para garantir o funcionamento no celular
             var popupContent = `
                 <div class="popup-container">
                     <div class="popup-title">${{p.nome}}</div>
-                    <button class="btn btn-gps" onclick="window.open('https://www.google.com/maps/dir/?api=1&destination=${{p.lat}},${{p.lng}}')">🚀 GPS</button>
-                    <button class="btn btn-done" onclick="sendAction('done', '${{p.id}}')">✅ FEITO</button>
-                    <button class="btn btn-del" onclick="sendAction('delete', '${{p.id}}')">🗑️ EXCLUIR</button>
+                    <a href="https://www.google.com/maps/dir/?api=1&destination=${{p.lat}},${{p.lng}}" target="_blank" class="btn btn-gps">🚀 GPS</a>
+                    <a href="./?action=done&id=${{p.id}}" target="_top" class="btn btn-done">✅ FEITO</a>
+                    <a href="./?action=delete&id=${{p.id}}" target="_top" class="btn btn-del">🗑️ EXCLUIR</a>
                 </div>
             `;
 
@@ -246,8 +222,7 @@ mapa_html = f"""
                 userMarker = L.circleMarker(e.latlng, {{
                     radius: 9, fillColor: "#4285F4", color: "white", weight: 3, opacity: 1, fillOpacity: 1
                 }}).addTo(map);
-                // No primeiro carregamento ou após rerun (ação), centraliza com zoom médio
-                map.setView(e.latlng, 16);
+                map.setView(e.latlng, 16); // Centraliza no GPS com zoom médio
             }} else {{
                 userMarker.setLatLng(e.latlng);
             }}
