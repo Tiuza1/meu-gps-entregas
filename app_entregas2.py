@@ -5,16 +5,35 @@ import os
 import math
 
 # =================================================================
-# 1. CONFIGURAÇÃO E MENU ESCURO (IGUAL VOCÊ PEDIU)
+# 0. PROCESSAMENTO DE AÇÕES DO POPUP (COMUNICAÇÃO JS -> PYTHON)
+# =================================================================
+# Captura cliques feitos dentro do HTML do mapa
+query_params = st.query_params
+if "action" in query_params and "id" in query_params:
+    action = query_params["action"]
+    item_id = query_params["id"]
+    
+    if action == "done":
+        if item_id not in st.session_state.entregues_id:
+            st.session_state.entregues_id.append(item_id)
+    elif action == "delete":
+        st.session_state.lista_pacotes = [p for p in st.session_state.lista_pacotes if p['id'] != item_id]
+        if item_id in st.session_state.entregues_id:
+            st.session_state.entregues_id.remove(item_id)
+            
+    # Limpa a URL e reinicia para atualizar o mapa e focar no GPS
+    st.query_params.clear()
+    st.rerun()
+
+# =================================================================
+# 1. CONFIGURAÇÃO E MENU ESCURO
 # =================================================================
 st.set_page_config(page_title="GPS Profissional", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
     <style>
-    /* ESCONDE TUDO O QUE NÃO PRECISA */
     [data-testid="stHeader"], [data-testid="stToolbar"], footer { display: none !important; }
 
-    /* ÍCONE DO MENU ESCURO E NO TOPO ESQUERDO */
     [data-testid="stSidebarCollapsedControl"] {
         background-color: #1E1E1E !important;
         color: white !important;
@@ -96,21 +115,17 @@ with c2:
             salvar_progresso(); st.rerun()
 
 # =================================================================
-# 5. LÓGICA DE QUAIS PONTOS MOSTRAR (VISUAL LIMPO)
+# 5. LÓGICA DE QUAIS PONTOS MOSTRAR
 # =================================================================
 proximo_id = None
 pontos_para_o_mapa = []
 
-# Filtramos apenas os que você adicionou
 for p in st.session_state.lista_pacotes:
     coords = banco_total.get(p['nome'], (0,0))
     concluido = p['id'] in st.session_state.entregues_id
-    
-    # Lógica da cor (Verde, Laranja ou Vermelho)
-    cor = "#28a745" if concluido else "#dc3545" # Padrão
+    cor = "#28a745" if concluido else "#dc3545"
     pontos_para_o_mapa.append({"id": p['id'], "lat": coords[0], "lng": coords[1], "nome": p['nome'], "concluido": concluido, "cor": cor})
 
-# Achar o mais próximo (Laranja)
 pendentes = [p for p in pontos_para_o_mapa if not p['concluido']]
 if st.session_state.ultima_pos and pendentes:
     m_dist = float('inf')
@@ -120,14 +135,13 @@ if st.session_state.ultima_pos and pendentes:
             m_dist = d
             proximo_id = p['id']
 
-# Atualiza a cor do próximo para Laranja e define texto
 for p in pontos_para_o_mapa:
     if p['id'] == proximo_id: p['cor'] = "#fd7e14"
     num = re.findall(r'\d+', p['nome'])[0] if re.findall(r'\d+', p['nome']) else p['nome'][:2]
     p['txt'] = "✔" if p['concluido'] else num
 
 # =================================================================
-# 6. O MAPA RÁPIDO (IGUAL AO DAS BOLINHAS VERMELHAS)
+# 6. O MAPA RÁPIDO COM POPUP TRANSPARENTE
 # =================================================================
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else [-16.15, -47.96]
 
@@ -146,6 +160,27 @@ mapa_html = f"""
             color: white; font-weight: bold; font-family: sans-serif;
             border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);
         }}
+        /* Estilo do Popup Transparente */
+        .leaflet-popup-content-wrapper {{
+            background: rgba(255, 255, 255, 0.4) !important;
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            color: #000;
+        }}
+        .leaflet-popup-tip {{ background: rgba(255, 255, 255, 0.4) !important; }}
+        .popup-container {{
+            display: flex; flex-direction: column; gap: 8px; padding: 5px; min-width: 120px;
+        }}
+        .popup-title {{ font-weight: bold; text-align: center; margin-bottom: 5px; font-size: 14px; color: #1E1E1E; }}
+        .btn {{
+            border: none; border-radius: 8px; padding: 10px; color: white;
+            font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+            transition: 0.2s; font-size: 12px;
+        }}
+        .btn-gps {{ background: #1E1E1E; }}
+        .btn-done {{ background: #28a745; }}
+        .btn-del {{ background: #dc3545; }}
     </style>
 </head>
 <body>
@@ -153,7 +188,6 @@ mapa_html = f"""
     <script>
         var map = L.map('map', {{ zoomControl: false }}).setView([{centro[0]}, {centro[1]}], 16);
         
-        // Camada do Google Maps
         L.tileLayer('http://{{s}}.google.com/vt/lyrs=m&x={{x}}&y={{y}}&z={{z}}', {{
             maxZoom: 20, subdomains:['mt0','mt1','mt2','mt3']
         }}).addTo(map);
@@ -161,22 +195,41 @@ mapa_html = f"""
         var pontos = {json.dumps(pontos_para_o_mapa)};
         var userMarker;
 
-        // Desenha APENAS os pontos que você adicionou
+        function sendAction(action, id) {{
+            const url = new URL(window.parent.location.href);
+            url.searchParams.set("action", action);
+            url.searchParams.set("id", id);
+            window.parent.location.href = url.href;
+        }}
+
         pontos.forEach(function(p) {{
             var icon = L.divIcon({{
                 className: '',
                 html: '<div class="pin" style="background:'+p.cor+'; opacity:'+(p.concluido ? 0.6 : 1)+'">'+p.txt+'</div>',
                 iconSize: [38, 38], iconAnchor: [19, 19]
             }});
-            L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map);
+
+            var popupContent = `
+                <div class="popup-container">
+                    <div class="popup-title">${{p.nome}}</div>
+                    <button class="btn btn-gps" onclick="window.open('https://www.google.com/maps/dir/?api=1&destination=${{p.lat}},${{p.lng}}')">🚀 GPS</button>
+                    <button class="btn btn-done" onclick="sendAction('done', '${{p.id}}')">✅ FEITO</button>
+                    <button class="btn btn-del" onclick="sendAction('delete', '${{p.id}}')">🗑️ EXCLUIR</button>
+                </div>
+            `;
+
+            L.marker([p.lat, p.lng], {{icon: icon}})
+             .addTo(map)
+             .bindPopup(popupContent);
         }});
 
-        // GPS LISO (Igual ao código que você gostou)
         function onLocationFound(e) {{
             if (!userMarker) {{
                 userMarker = L.circleMarker(e.latlng, {{
                     radius: 9, fillColor: "#4285F4", color: "white", weight: 3, opacity: 1, fillOpacity: 1
                 }}).addTo(map);
+                // No início ou após rerun, foca no GPS com zoom médio
+                map.setView(e.latlng, 16);
             }} else {{
                 userMarker.setLatLng(e.latlng);
             }}
@@ -188,17 +241,11 @@ mapa_html = f"""
 </html>
 """
 
-st.components.v1.html(mapa_html, height=550)
+st.components.v1.html(mapa_html, height=600)
 
-# Painel de Controle (Abaixo do mapa)
+# Painel Informativo (Opcional, agora que temos Popup)
 if pendentes:
     p_atual = next(p for p in pontos_para_o_mapa if p['id'] == proximo_id) if proximo_id else pendentes[0]
-    st.info(f"📍 **Próximo:** {p_atual['nome']}")
-    c_gps, c_ok = st.columns(2)
-    with c_gps:
-        st.link_button("🚀 GPS", f"https://www.google.com/maps/dir/?api=1&destination={p_atual['lat']},{p_atual['lng']}")
-    with c_ok:
-        if st.button("✅ FEITO"):
-            st.session_state.entregues_id.append(p_atual['id'])
-            st.session_state.ultima_pos = [p_atual['lat'], p_atual['lng']]
-            salvar_progresso(); st.rerun()
+    st.info(f"💡 Sugestão: **{p_atual['nome']}**")
+
+salvar_progresso()
