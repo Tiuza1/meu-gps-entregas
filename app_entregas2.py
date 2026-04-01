@@ -4,14 +4,10 @@ import re
 import os
 import math
 
-# 1. CONFIGURAÇÃO (Sempre primeiro)
+# 1. CONFIGURAÇÃO (Sempre a primeira linha de Streamlit)
 st.set_page_config(page_title="GPS Profissional", layout="wide", initial_sidebar_state="collapsed")
 
-# 2. FUNÇÕES DE SUPORTE (Precisam ser definidas antes de serem usadas)
-def salvar_progresso():
-    dados = {"lista_pacotes": st.session_state.lista_pacotes, "entregues_id": st.session_state.entregues_id, "ultima_pos": st.session_state.ultima_pos}
-    with open("progresso_final.json", "w") as f: json.dump(dados, f)
-
+# 2. PROCESSAMENTO DE DADOS (Lógica de fundo)
 @st.cache_data
 def carregar_banco():
     try:
@@ -22,48 +18,52 @@ def carregar_banco():
                 for l in dados_j.get('features',[])}
     except: return {}
 
-# 3. CRIAR AS VARIÁVEIS BASE (Aqui resolvemos o erro banco_total)
 banco_total = carregar_banco()
 
 if 'lista_pacotes' not in st.session_state: st.session_state.lista_pacotes = []
 if 'entregues_id' not in st.session_state: st.session_state.entregues_id = []
 if 'ultima_pos' not in st.session_state: st.session_state.ultima_pos = None
 
-# 4. LÓGICA DE URL (Resolve a duplicação: Limpa tudo antes de desenhar a tela)
-qp = st.query_params
-if "concluir" in qp:
-    id_alvo = qp["concluir"]
+# --- LÓGICA DE CONCLUIR (BLOQUEIO DE TOPO) ---
+# Isso deve vir ANTES de qualquer st.columns ou st.selectbox
+if "concluir" in st.query_params:
+    id_alvo = st.query_params["concluir"]
     if id_alvo not in st.session_state.entregues_id:
         st.session_state.entregues_id.append(id_alvo)
-        # Atualiza a posição para o local entregue
+        # Atualiza a posição
         for p in st.session_state.lista_pacotes:
             if p['id'] == id_alvo:
                 st.session_state.ultima_pos = banco_total.get(p['nome'])
-        salvar_progresso()
+        
+        # SALVA E RECOMEÇA TUDO DO ZERO
+        # (Isso impede que o código continue e desenhe menus duplicados)
         st.query_params.clear()
-        st.rerun() # Mata o processo atual e recomeça a página limpa
+        st.rerun()
 
-# 5. ESTILOS CSS
-st.markdown("""<style>... seu css aqui ...</style>""", unsafe_allow_html=True)
+# 3. INTERFACE (Só chega aqui se não houver 'concluir' na URL)
+st.markdown("""<style>... seu css ...</style>""", unsafe_allow_html=True)
 
-# 6. BUSCA E ADICIONAR (Dentro de um container para travar a interface)
-with st.container():
+# Container único para a busca (evita fantasmas na tela)
+menu_topo = st.empty()
+with menu_topo.container():
     c1, c2 = st.columns([5, 1])
     with c1:
-        busca = st.selectbox(
-            "Busca", 
-            options=["(Adicionar...)"] + list(banco_total.keys()), 
-            label_visibility="collapsed",
-            key="busca_principal_v1"
-        )
+        busca = st.selectbox("Busca", options=["(Adicionar...)"] + list(banco_total.keys()), 
+                             label_visibility="collapsed", key="selectbox_fixo")
     with c2:
-        if st.button("➕", key="btn_add_v1"):
+        if st.button("➕", key="btn_add_fixo"):
             if busca and busca != "(Adicionar...)":
                 nid = f"{busca}_{len(st.session_state.lista_pacotes)}"
                 st.session_state.lista_pacotes.append({"id": nid, "nome": busca})
                 st.session_state.ultima_pos = banco_total[busca]
-                salvar_progresso()
                 st.rerun()
+
+# 4. MAPA (IMPORTANTE: MUDANÇA NO TARGET)
+# No seu mapa_html, altere a linha do botão concluir para:
+# popupContent += '<a href="?concluir='+p.id+'" target="_top" class="popup-btn" style="background:#28a745;">✅ CONCLUIR</a>';
+#                                              ^^^^^^^^^^^ (MUDE AQUI)
+
+# ... (restante do código do mapa e rodapé)
 # =================================================================
 # 4. PREPARAÇÃO DOS PONTOS
 # =================================================================
