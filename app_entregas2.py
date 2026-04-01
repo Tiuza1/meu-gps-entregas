@@ -57,20 +57,24 @@ def carregar_banco():
 
 banco_total = carregar_banco()
 
-# No bloco de processamento de query_params:
+# --- LÓGICA PARA PROCESSAR AÇÃO DO POPUP ---
+# Você precisa desta linha abaixo para o código saber o que é 'query_params'
+query_params = st.query_params 
+
 if "concluir" in query_params:
     id_para_concluir = query_params["concluir"]
     if id_para_concluir not in st.session_state.entregues_id:
         st.session_state.entregues_id.append(id_para_concluir)
+        # Atualiza a última posição para o local que acabou de ser entregue
         for p in st.session_state.lista_pacotes:
             if p['id'] == id_para_concluir:
                 coords = banco_total.get(p['nome'])
                 if coords: st.session_state.ultima_pos = coords
         salvar_progresso()
     
-    # IMPORTANTE: Use este método para limpar e recarregar de uma vez só
-    st.query_params.clear() 
-    st.rerun() # O rerun aqui é essencial para limpar a UI e começar do zero sem os params na URL
+    # Limpa a URL e recarrega para evitar o loop e a duplicação de menus
+    st.query_params.clear()
+    st.rerun()
 
 # Na Seção 3. BUSCA E ADICIONAR
 with c1:
