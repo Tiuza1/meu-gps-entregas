@@ -4,11 +4,10 @@ import re
 import os
 import math
 
-# =================================================================
-# 1. CONFIGURAÇÃO E CSS
-# =================================================================
+# 1. CONFIGURAÇÃO (Deve ser a primeira coisa)
 st.set_page_config(page_title="GPS Profissional", layout="wide", initial_sidebar_state="collapsed")
 
+# 2. LIMPEZA DE UI (CSS)
 st.markdown("""
     <style>
     [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stToolbar"], footer { display: none !important; }
@@ -17,33 +16,35 @@ st.markdown("""
     iframe { border-radius: 20px !important; border: 1px solid #333 !important; }
     
     /* Estilo do Popup */
-    .leaflet-popup-content-wrapper { border-radius: 12px !important; padding: 5px !important; background: #262730 !important; color: white !important; }
+    .leaflet-popup-content-wrapper { border-radius: 12px !important; background: #262730 !important; color: white !important; }
     .leaflet-popup-tip { background: #262730 !important; }
     .popup-btn {
         display: block; width: 100%; text-align: center;
         padding: 12px 0; margin-top: 10px; border-radius: 8px;
-        text-decoration: none; color: white !important; font-family: sans-serif;
-        font-weight: bold; font-size: 14px;
+        text-decoration: none; color: white !important; font-family: sans-serif; font-weight: bold;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# =================================================================
-# 2. MEMÓRIA E LOGICA DE DADOS
-# =================================================================
+# 3. INICIALIZAÇÃO DE MEMÓRIA
 FILE_SAVE = "progresso_final.json"
 
-if 'lista_pacotes' not in st.session_state: st.session_state.lista_pacotes =[]
-if 'entregues_id' not in st.session_state: st.session_state.entregues_id =[]
-if 'ultima_pos' not in st.session_state: st.session_state.ultima_pos = None
-
-def salvar_progresso():
-    dados = {
-        "lista_pacotes": st.session_state.lista_pacotes, 
-        "entregues_id": st.session_state.entregues_id, 
-        "ultima_pos": st.session_state.ultima_pos
-    }
-    with open(FILE_SAVE, "w") as f: json.dump(dados, f)
+if 'lista_pacotes' not in st.session_state:
+    if os.path.exists(FILE_SAVE):
+        try:
+            with open(FILE_SAVE, "r") as f:
+                d = json.load(f)
+                st.session_state.lista_pacotes = d.get("lista_pacotes", [])
+                st.session_state.entregues_id = d.get("entregues_id", [])
+                st.session_state.ultima_pos = d.get("ultima_pos")
+        except:
+            st.session_state.lista_pacotes = []
+            st.session_state.entregues_id = []
+            st.session_state.ultima_pos = None
+    else:
+        st.session_state.lista_pacotes = []
+        st.session_state.entregues_id = []
+        st.session_state.ultima_pos = None
 
 @st.cache_data
 def carregar_banco():
@@ -57,60 +58,57 @@ def carregar_banco():
 
 banco_total = carregar_banco()
 
-if not st.session_state.lista_pacotes and os.path.exists(FILE_SAVE):
-    try:
-        with open(FILE_SAVE, "r") as f:
-            d = json.load(f)
-            st.session_state.lista_pacotes = d.get("lista_pacotes",[])
-            st.session_state.entregues_id = d.get("entregues_id",[])
-            st.session_state.ultima_pos = d.get("ultima_pos")
-    except: pass
-
-# =================================================================
-# 3. PROCESSAR AÇÃO DO POPUP (CONCLUIR) 
-# =================================================================
-query_params = st.query_params
-if "concluir" in query_params:
-    id_alvo = query_params["concluir"]
+# 4. LÓGICA DE CLIQUE NO MAPA (CONCLUIR)
+# Processa o clique ANTES de desenhar qualquer coisa na tela
+query = st.query_params
+if "concluir" in query:
+    id_alvo = query["concluir"]
     if id_alvo not in st.session_state.entregues_id:
         st.session_state.entregues_id.append(id_alvo)
-        # Atualiza última posição para o ponto concluído
+        # Salva a posição do ponto concluído como última posição
         for p in st.session_state.lista_pacotes:
             if p['id'] == id_alvo:
                 st.session_state.ultima_pos = banco_total.get(p['nome'])
-        salvar_progresso()
-    # Limpa a URL e atualiza a tela para evitar bugs
+        
+        # Salva no arquivo
+        dados = {"lista_pacotes": st.session_state.lista_pacotes, "entregues_id": st.session_state.entregues_id, "ultima_pos": st.session_state.ultima_pos}
+        with open(FILE_SAVE, "w") as f: json.dump(dados, f)
+        
     st.query_params.clear()
     st.rerun()
 
 # =================================================================
-# 4. INTERFACE DE BUSCA 
+# 5. DESENHO DA INTERFACE (AQUI COMEÇA A TELA)
 # =================================================================
+
+# --- BLOCO DE BUSCA ---
 c1, c2 = st.columns([5, 1])
 with c1:
-    busca = st.selectbox("Busca", options=["(Adicionar...)"] + list(banco_total.keys()), label_visibility="collapsed", key="search_box")
+    # Use uma key única para evitar duplicação interna
+    busca = st.selectbox("Busca", options=["(Adicionar...)"] + list(banco_total.keys()), label_visibility="collapsed", key="main_search")
 with c2:
-    if st.button("➕", key="add_btn"):
+    if st.button("➕", key="btn_add_principal"):
         if busca and busca != "(Adicionar...)":
             nid = f"{busca}_{len(st.session_state.lista_pacotes)}"
             st.session_state.lista_pacotes.append({"id": nid, "nome": busca})
             st.session_state.ultima_pos = banco_total[busca]
-            salvar_progresso()
+            # Salvar
+            dados = {"lista_pacotes": st.session_state.lista_pacotes, "entregues_id": st.session_state.entregues_id, "ultima_pos": st.session_state.ultima_pos}
+            with open(FILE_SAVE, "w") as f: json.dump(dados, f)
             st.rerun()
 
-# =================================================================
-# 5. PREPARAÇÃO DO MAPA
-# =================================================================
-pontos_para_o_mapa =[]
+# --- PREPARAÇÃO DOS DADOS DO MAPA ---
+pontos_mapa = []
 proximo_id = None
 
 for p in st.session_state.lista_pacotes:
     coords = banco_total.get(p['nome'], (0,0))
     concluido = p['id'] in st.session_state.entregues_id
     cor = "#28a745" if concluido else "#dc3545"
-    pontos_para_o_mapa.append({"id": p['id'], "lat": coords[0], "lng": coords[1], "nome": p['nome'], "concluido": concluido, "cor": cor})
+    pontos_mapa.append({"id": p['id'], "lat": coords[0], "lng": coords[1], "nome": p['nome'], "concluido": concluido, "cor": cor})
 
-pendentes =[p for p in pontos_para_o_mapa if not p['concluido']]
+# Achar o laranja (mais próximo)
+pendentes = [p for p in pontos_mapa if not p['concluido']]
 if st.session_state.ultima_pos and pendentes:
     m_dist = float('inf')
     for p in pendentes:
@@ -119,14 +117,12 @@ if st.session_state.ultima_pos and pendentes:
             m_dist = d
             proximo_id = p['id']
 
-for p in pontos_para_o_mapa:
+for p in pontos_mapa:
     if p['id'] == proximo_id: p['cor'] = "#fd7e14"
     num = re.findall(r'\d+', p['nome'])[0] if re.findall(r'\d+', p['nome']) else p['nome'][:2]
     p['txt'] = "✔" if p['concluido'] else num
 
-# =================================================================
-# 6. HTML DO MAPA (COM A CORREÇÃO NO TARGET DO POPUP)
-# =================================================================
+# --- DESENHO DO MAPA ---
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else [-16.15, -47.96]
 mapa_html = f"""
 <!DOCTYPE html>
@@ -134,76 +130,49 @@ mapa_html = f"""
 <head>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <style>
-        #map {{ height: 100vh; width: 100%; background: #121212; }}
-        body {{ margin: 0; padding: 0; }}
-        .pin {{
-            width: 38px; height: 38px; border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            color: white; font-weight: bold; font-family: sans-serif;
-            border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-        }}
+    <style>#map {{ height: 100vh; width: 100%; background: #121212; }} body {{ margin: 0; }}
+    .pin {{ width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }}
     </style>
 </head>
 <body>
     <div id="map"></div>
     <script>
         var map = L.map('map', {{ zoomControl: false }}).setView([{centro[0]}, {centro[1]}], 16);
-        L.tileLayer('http://{{s}}.google.com/vt/lyrs=m&x={{x}}&y={{y}}&z={{z}}', {{
-            maxZoom: 20, subdomains:['mt0','mt1','mt2','mt3']
-        }}).addTo(map);
+        L.tileLayer('http://{{s}}.google.com/vt/lyrs=m&x={{x}}&y={{y}}&z={{z}}', {{ maxZoom: 20, subdomains:['mt0','mt1','mt2','mt3'] }}).addTo(map);
 
-        var pontos = {json.dumps(pontos_para_o_mapa)};
+        var pontos = {json.dumps(pontos_mapa)};
         pontos.forEach(function(p) {{
-            var icon = L.divIcon({{
-                className: '',
-                html: '<div class="pin" style="background:'+p.cor+'; opacity:'+(p.concluido ? 0.6 : 1)+'">'+p.txt+'</div>',
-                iconSize: [38, 38], iconAnchor: [19, 19]
-            }});
-
-            var content = '<div style="color:white; font-family:sans-serif;">' +
-                '<strong>'+p.nome+'</strong>' +
+            var icon = L.divIcon({{ className: '', html: '<div class="pin" style="background:'+p.cor+'; opacity:'+(p.concluido ? 0.6 : 1)+'">'+p.txt+'</div>', iconSize: [38, 38], iconAnchor: [19, 19] }});
+            var content = '<div style="min-width:160px;"><strong style="font-size:16px;">'+p.nome+'</strong>' +
                 '<a href="https://www.google.com/maps/dir/?api=1&destination='+p.lat+','+p.lng+'" target="_blank" class="popup-btn" style="background:#4285F4;">🚀 ABRIR GPS</a>';
-            
-            if (!p.concluido) {{
-                // CORREÇÃO AQUI: target="_parent" no lugar de target="_self"
-                content += '<a href="?concluir='+p.id+'" target="_parent" class="popup-btn" style="background:#28a745;">✅ CONCLUIR</a>';
-            }}
+            if (!p.concluido) {{ content += '<a href="?concluir='+p.id+'" target="_self" class="popup-btn" style="background:#28a745;">✅ CONCLUIR</a>'; }}
             content += '</div>';
-
             L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map).bindPopup(content);
         }});
 
-        // GPS Tempo Real
         var userMarker;
         map.on('locationfound', function(e) {{
-            if (!userMarker) {{
-                userMarker = L.circleMarker(e.latlng, {{ radius: 9, fillColor: "#4285F4", color: "white", weight: 3, opacity: 1, fillOpacity: 1 }}).addTo(map);
-            }} else {{ userMarker.setLatLng(e.latlng); }}
+            if (!userMarker) {{ userMarker = L.circleMarker(e.latlng, {{ radius: 9, fillColor: "#4285F4", color: "white", weight: 3, opacity: 1, fillOpacity: 1 }}).addTo(map); }}
+            else {{ userMarker.setLatLng(e.latlng); }}
         }});
         map.locate({{ watch: true, enableHighAccuracy: true }});
     </script>
 </body>
 </html>
 """
+st.components.v1.html(mapa_html, height=500)
 
-st.components.v1.html(mapa_html, height=550)
-
-# =================================================================
-# 7. RODAPÉ DE GERENCIAMENTO
-# =================================================================
+# --- RODAPÉ ---
 st.write("---")
-col1, col2 = st.columns(2)
-
-with col1:
+col_txt, col_limpar = st.columns(2)
+with col_txt:
     if st.session_state.lista_pacotes:
-        rota_txt = "📋 ROTA\\n" + "\\n".join([f"{'✅' if p['id'] in st.session_state.entregues_id else '❌'} {p['nome']}" for p in st.session_state.lista_pacotes])
-        st.download_button("💾 SALVAR TXT", data=rota_txt, file_name="rota.txt", use_container_width=True)
-    else:
-        st.button("💾 SALVAR TXT", disabled=True, use_container_width=True)
-
-with col2:
+        resumo = "ROTA:\\n" + "\\n".join([f"{'OK' if p['id'] in st.session_state.entregues_id else '..'} {p['nome']}" for p in st.session_state.lista_pacotes])
+        st.download_button("💾 SALVAR TXT", resumo, file_name="rota.txt", use_container_width=True)
+with col_limpar:
     if st.button("🗑️ LIMPAR TUDO", use_container_width=True):
         if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
-        st.session_state.lista_pacotes =[]
-        st.session_state.entregues_id =
+        st.session_state.lista_pacotes = []
+        st.session_state.entregues_id = []
+        st.session_state.ultima_pos = None
+        st.rerun()
