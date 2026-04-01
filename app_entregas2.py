@@ -5,15 +5,34 @@ import os
 import math
 
 # =================================================================
-# 1. CONFIGURAÇÃO DE TELA (UI LIMPA)
+# 1. CONFIGURAÇÃO DE TELA CHEIA TOTAL (ELIMINA BARRAS PRETAS)
 # =================================================================
 st.set_page_config(page_title="GPS Profissional", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
     <style>
+    /* 1. Esconde Header, Footer e Toolbar */
     [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stToolbar"], footer { display: none !important; }
-    .block-container { padding: 0 !important; max-width: 100% !important; margin: 0 !important; }
-    iframe { width: 100vw; height: 100vh; border: none !important; }
+    
+    /* 2. Remove todos os paddings do container principal */
+    .main .block-container {
+        padding: 0rem !important;
+        max-width: 100% !important;
+        margin-top: -20px !important; /* Puxa o conteúdo para cima */
+    }
+
+    /* 3. Ajusta o fundo para não parecer que há cortes */
+    [data-testid="stAppViewContainer"] {
+        background-color: white !important;
+    }
+
+    /* 4. Remove bordas e scrollbars do iframe */
+    iframe {
+        border: none !important;
+        width: 100% !important;
+    }
+    
+    #MainMenu {visibility: hidden;}
     </style>
 """, unsafe_allow_html=True)
 
@@ -104,7 +123,7 @@ for p in st.session_state.lista_pacotes:
     })
 
 # =================================================================
-# 4. HTML/JS (INTERFACE COMPLETA)
+# 4. HTML/JS (INTERFACE)
 # =================================================================
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else [-16.15, -47.96]
 lista_opcoes_html = "".join([f'<option value="{n}">' for n in banco_total.keys()])
@@ -118,13 +137,12 @@ mapa_html = f"""
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        body {{ margin: 0; padding: 0; font-family: sans-serif; overflow: hidden; background: #eee; }}
-        #map {{ height: 100vh; width: 100vw; z-index: 1; }}
+        body {{ margin: 0; padding: 0; font-family: sans-serif; overflow: hidden; background: white; }}
+        #map {{ height: 100vh; width: 100vw; }}
 
-        /* Busca Flutuante */
         .search-container {{
             position: fixed; top: 10px; left: 10px; right: 10px; z-index: 1000;
-            display: flex; gap: 5px; background: white; padding: 8px;
+            display: flex; gap: 5px; background: white; padding: 6px;
             border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }}
         #input-busca {{
@@ -136,12 +154,11 @@ mapa_html = f"""
             padding: 0 15px; border-radius: 8px; font-size: 20px; font-weight: bold;
         }}
 
-        /* Painel Inferior */
         #sheet {{
             position: fixed; bottom: -300px; left: 0; right: 0;
             background: white; z-index: 2000; padding: 20px;
             border-radius: 20px 20px 0 0; box-shadow: 0 -5px 25px rgba(0,0,0,0.3);
-            transition: bottom 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transition: bottom 0.4s ease;
         }}
         #sheet.active {{ bottom: 0; }}
         .sheet-title {{ font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #333; }}
@@ -150,13 +167,11 @@ mapa_html = f"""
             flex: 1; text-align: center; padding: 16px; border-radius: 12px;
             text-decoration: none; color: white; font-weight: bold; font-size: 14px;
         }}
-
         .pin {{
             width: 36px; height: 36px; border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
             color: white; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);
         }}
-
         .btn-clear {{
             position: fixed; top: 75px; right: 10px; z-index: 1000;
             background: rgba(255,255,255,0.9); border: none; padding: 8px 12px;
@@ -166,7 +181,6 @@ mapa_html = f"""
     </style>
 </head>
 <body>
-
     <div class="search-container">
         <input type="text" id="input-busca" list="lugares" placeholder="Digite número ou nome...">
         <datalist id="lugares">{lista_opcoes_html}</datalist>
@@ -178,12 +192,12 @@ mapa_html = f"""
     <div id="map"></div>
 
     <div id="sheet">
-        <div id="s-nome" class="sheet-title">Local Selecionado</div>
+        <div id="s-nome" class="sheet-title">Local</div>
         <div class="btn-row">
-            <a id="s-gps" href="#" target="_blank" class="btn" style="background:#4285F4">🚀 ABRIR GPS</a>
+            <a id="s-gps" href="#" target="_blank" class="btn" style="background:#4285F4">🚀 GPS</a>
             <a id="s-done" href="#" target="_self" class="btn" style="background:#28a745">✅ CONCLUIR</a>
         </div>
-        <button onclick="closeSheet()" style="width:100%; margin-top:15px; background:none; border:none; color:#999; font-size:12px;">FECHAR</button>
+        <button onclick="closeSheet()" style="width:100%; margin-top:15px; background:none; border:none; color:#999;">FECHAR</button>
     </div>
 
     <script>
@@ -207,30 +221,19 @@ mapa_html = f"""
             }});
 
             var marker = L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map);
-            
-            // CORREÇÃO: Clique no marcador abre o menu
             marker.on('click', function(e) {{
                 L.DomEvent.stopPropagation(e);
                 document.getElementById('s-nome').innerText = p.nome;
                 document.getElementById('s-gps').href = "https://www.google.com/maps/dir/?api=1&destination="+p.lat+","+p.lng;
-                
                 var btnDone = document.getElementById('s-done');
-                if(p.concluido) {{
-                    btnDone.style.display = 'none';
-                }} else {{
-                    btnDone.style.display = 'block';
-                    btnDone.href = "?concluir=" + p.id;
-                }}
-                
+                btnDone.style.display = p.concluido ? 'none' : 'block';
+                btnDone.href = "?concluir=" + p.id;
                 document.getElementById('sheet').classList.add('active');
                 map.panTo([p.lat, p.lng]);
             }});
         }});
 
-        // Fechar menu ao clicar no mapa
         map.on('click', closeSheet);
-
-        // Localização do usuário
         map.locate({{watch: true, enableHighAccuracy: true}});
         var userMarker;
         map.on('locationfound', function(e) {{
@@ -243,5 +246,5 @@ mapa_html = f"""
 </html>
 """
 
-# Renderiza o componente com altura fixa para evitar rolagem
-st.components.v1.html(mapa_html, height=700)
+# Aumentamos a altura para 850 para cobrir quase todo o viewport do celular
+st.components.v1.html(mapa_html, height=850)
