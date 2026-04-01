@@ -7,20 +7,18 @@ import math
 # =================================================================
 # 1. CONFIGURAÇÃO E MENU ESCURO (IGUAL VOCÊ PEDIU)
 # =================================================================
-st.set_page_config(page_title="GPS Profissional", layout="wide", initial_sidebar_state="collapsed")
-
 st.markdown("""
     <style>
-    /* 1. DEIXA A BARRA SUPERIOR TOTALMENTE TRANSPARENTE */
-    header[data-testid="stHeader"] {
+    /* 1. FAZ A BARRA DO TOPO FICAR TRANSPARENTE E NÃO BLOQUEAR CLIQUES */
+    [data-testid="stHeader"] {
         background-color: rgba(0,0,0,0) !important;
-        border-bottom: none !important;
+        height: 0px !important;
     }
 
-    /* 2. POSICIONA E ESTILIZA O BOTÃO DO MENU (HAMBÚRGUER) */
-    /* Ele vai ficar flutuando no canto superior esquerdo */
+    /* 2. FORÇA O BOTÃO DO MENU (TRÊS RISQUINHOS) A APARECER */
+    /* Ele vai ficar fixo no canto superior esquerdo */
     [data-testid="stSidebarCollapsedControl"] {
-        background-color: #1E1E1E !important; /* Cor escura igual ao fundo */
+        background-color: #1E1E1E !important; /* Cor escura */
         color: white !important;
         border-radius: 10px !important;
         width: 45px !important;
@@ -32,25 +30,22 @@ st.markdown("""
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
-        box-shadow: 0px 4px 10px rgba(0,0,0,0.4) !important;
-        border: 1px solid #333 !important;
+        box-shadow: 0px 4px 15px rgba(0,0,0,0.6) !important;
+        border: 1px solid #444 !important;
     }
-
+    
     /* Garante que o ícone do menu seja branco */
     [data-testid="stSidebarCollapsedControl"] svg {
         fill: white !important;
     }
 
-    /* 3. AJUSTA O ESPAÇO DO CONTEÚDO PARA NÃO SUBIR DEMAIS */
-    .block-container {
-        padding-top: 0rem !important;
-    }
+    /* Ajusta o conteúdo para não bater no topo */
+    .block-container { padding-top: 3.5rem !important; }
 
-    /* Remove lixo visual */
+    /* Esconde apenas o lixo (toolbar e footer) */
     [data-testid="stToolbar"], footer { display: none !important; }
     </style>
 """, unsafe_allow_html=True)
-
 # =================================================================
 # 2. MEMÓRIA DO SISTEMA
 # =================================================================
@@ -86,45 +81,48 @@ def carregar_banco():
 banco_total = carregar_banco()
 
 # =================================================================
-# 3. MENU LATERAL (AÇÕES)
+# 3. MENU LATERAL (AÇÕES DO SISTEMA)
 # =================================================================
 with st.sidebar:
-    st.markdown("### 🛠️ Gerenciar Rota")
+    st.title("🗺️ Menu de Opções")
     st.write("---")
 
-    # --- AÇÃO 1: SALVAR ROTA EM .TXT ---
+    # AÇÃO 1: SALVAR ROTA
+    st.subheader("💾 Exportar Rota")
     if st.session_state.lista_pacotes:
-        # Criar o conteúdo do texto
-        conteudo = "📋 MINHA ROTA DE ENTREGAS\n"
-        conteudo += "="*30 + "\n"
+        # Gerar o texto do arquivo
+        txt_conteudo = "ROTA DE ENTREGAS\n" + "="*30 + "\n"
         for i, p in enumerate(st.session_state.lista_pacotes, 1):
             status = "[OK]" if p['id'] in st.session_state.entregues_id else "[ ]"
-            conteudo += f"{i}. {status} {p['nome']}\n"
+            txt_conteudo += f"{i}. {status} {p['nome']}\n"
         
+        # O Streamlit só "salva" via download no navegador
         st.download_button(
-            label="💾 SALVAR ROTA (.txt)",
-            data=conteudo,
-            file_name="rota_entregas.txt",
+            label="BAIXAR ROTA (.txt)",
+            data=txt_conteudo,
+            file_name="minha_rota.txt",
             mime="text/plain",
             use_container_width=True
         )
     else:
-        st.info("Adicione locais para salvar.")
-
-    st.write("") # Espaço
-
-    # --- AÇÃO 2: LIMPAR TUDO ---
-    if st.button("🗑️ LIMPAR MAPA", use_container_width=True):
-        if os.path.exists(FILE_SAVE):
-            os.remove(FILE_SAVE)
-        st.session_state.lista_pacotes = []
-        st.session_state.entregues_id = []
-        st.session_state.ultima_pos = None
-        st.toast("Tudo limpo!")
-        st.rerun()
+        st.info("Nenhum item na rota.")
 
     st.write("---")
 
+    # AÇÃO 2: LIMPAR MAPA
+    st.subheader("🗑️ Limpar Dados")
+    if st.button("LIMPAR TUDO", use_container_width=True, type="primary"):
+        if os.path.exists(FILE_SAVE):
+            os.remove(FILE_SAVE)
+        # Reseta as variáveis da sessão
+        st.session_state.lista_pacotes = []
+        st.session_state.entregues_id = []
+        st.session_state.ultima_pos = None
+        st.toast("Mapa e progresso apagados!")
+        st.rerun()
+
+    st.write("---")
+    st.caption("Versão GPS Profissional")
 # =================================================================
 # 4. BUSCA E ADICIONAR
 # =================================================================
