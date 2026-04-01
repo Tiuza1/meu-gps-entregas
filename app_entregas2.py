@@ -11,25 +11,30 @@ st.set_page_config(page_title="GPS Profissional", layout="wide", initial_sidebar
 
 st.markdown("""
     <style>
-    /* Esconde o cabeçalho e menus padrões do Streamlit */
     [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stToolbar"], footer { display: none !important; }
     .block-container { padding: 0.5rem !important; max-width: 100% !important; }
-    
-    /* Botões padrões arredondados */
     .stButton>button { border-radius: 10px !important; height: 45px !important; font-weight: bold !important; }
-    
-    /* Deixa o mapa com bordas arredondadas */
     iframe { border-radius: 20px !important; border: 1px solid #333 !important; }
+    
+    /* Estilo do Popup */
+    .leaflet-popup-content-wrapper { border-radius: 12px !important; padding: 5px !important; background: #262730 !important; color: white !important; }
+    .leaflet-popup-tip { background: #262730 !important; }
+    .popup-btn {
+        display: block; width: 100%; text-align: center;
+        padding: 12px 0; margin-top: 10px; border-radius: 8px;
+        text-decoration: none; color: white !important; font-family: sans-serif;
+        font-weight: bold; font-size: 14px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
 # =================================================================
-# 2. MEMÓRIA DO SISTEMA E PROCESSAMENTO DO CLIQUE
+# 2. MEMÓRIA E LOGICA DE DADOS
 # =================================================================
 FILE_SAVE = "progresso_final.json"
 
-if 'lista_pacotes' not in st.session_state: st.session_state.lista_pacotes = []
-if 'entregues_id' not in st.session_state: st.session_state.entregues_id = []
+if 'lista_pacotes' not in st.session_state: st.session_state.lista_pacotes =[]
+if 'entregues_id' not in st.session_state: st.session_state.entregues_id =[]
 if 'ultima_pos' not in st.session_state: st.session_state.ultima_pos = None
 
 def salvar_progresso():
@@ -40,7 +45,6 @@ def salvar_progresso():
     }
     with open(FILE_SAVE, "w") as f: json.dump(dados, f)
 
-# Carrega a base de dados de lugares
 @st.cache_data
 def carregar_banco():
     try:
@@ -53,51 +57,51 @@ def carregar_banco():
 
 banco_total = carregar_banco()
 
-# Carregar progresso salvo no arquivo
 if not st.session_state.lista_pacotes and os.path.exists(FILE_SAVE):
     try:
         with open(FILE_SAVE, "r") as f:
             d = json.load(f)
-            st.session_state.lista_pacotes = d.get("lista_pacotes", [])
-            st.session_state.entregues_id = d.get("entregues_id", [])
+            st.session_state.lista_pacotes = d.get("lista_pacotes",[])
+            st.session_state.entregues_id = d.get("entregues_id",[])
             st.session_state.ultima_pos = d.get("ultima_pos")
     except: pass
 
-# --- AQUI ESTÁ O SEGREDO: PROCESSA O CLIQUE DO MAPA ANTES DE DESENHAR A TELA ---
-if "concluir" in st.query_params:
-    id_alvo = st.query_params["concluir"]
+# =================================================================
+# 3. PROCESSAR AÇÃO DO POPUP (CONCLUIR) 
+# =================================================================
+query_params = st.query_params
+if "concluir" in query_params:
+    id_alvo = query_params["concluir"]
     if id_alvo not in st.session_state.entregues_id:
         st.session_state.entregues_id.append(id_alvo)
-        # Atualiza a última posição para o ponto que acabou de ser concluído
+        # Atualiza última posição para o ponto concluído
         for p in st.session_state.lista_pacotes:
             if p['id'] == id_alvo:
                 st.session_state.ultima_pos = banco_total.get(p['nome'])
         salvar_progresso()
-    
-    # Limpa o link do navegador e recarrega a tela do zero para evitar duplicações
-    del st.query_params["concluir"]
+    # Limpa a URL e atualiza a tela para evitar bugs
+    st.query_params.clear()
     st.rerun()
 
 # =================================================================
-# 3. INTERFACE DE BUSCA (APENAS UM BLOCO)
+# 4. INTERFACE DE BUSCA 
 # =================================================================
-with st.container():
-    c1, c2 = st.columns([5, 1])
-    with c1:
-        busca = st.selectbox("Busca", options=["(Adicionar...)"] + list(banco_total.keys()), label_visibility="collapsed", key="caixa_busca_unica")
-    with c2:
-        if st.button("➕", key="botao_add_unico"):
-            if busca and busca != "(Adicionar...)":
-                nid = f"{busca}_{len(st.session_state.lista_pacotes)}"
-                st.session_state.lista_pacotes.append({"id": nid, "nome": busca})
-                st.session_state.ultima_pos = banco_total[busca]
-                salvar_progresso()
-                st.rerun()
+c1, c2 = st.columns([5, 1])
+with c1:
+    busca = st.selectbox("Busca", options=["(Adicionar...)"] + list(banco_total.keys()), label_visibility="collapsed", key="search_box")
+with c2:
+    if st.button("➕", key="add_btn"):
+        if busca and busca != "(Adicionar...)":
+            nid = f"{busca}_{len(st.session_state.lista_pacotes)}"
+            st.session_state.lista_pacotes.append({"id": nid, "nome": busca})
+            st.session_state.ultima_pos = banco_total[busca]
+            salvar_progresso()
+            st.rerun()
 
 # =================================================================
-# 4. PREPARAÇÃO DOS PONTOS PARA O MAPA
+# 5. PREPARAÇÃO DO MAPA
 # =================================================================
-pontos_para_o_mapa = []
+pontos_para_o_mapa =[]
 proximo_id = None
 
 for p in st.session_state.lista_pacotes:
@@ -106,8 +110,7 @@ for p in st.session_state.lista_pacotes:
     cor = "#28a745" if concluido else "#dc3545"
     pontos_para_o_mapa.append({"id": p['id'], "lat": coords[0], "lng": coords[1], "nome": p['nome'], "concluido": concluido, "cor": cor})
 
-# Achar o mais próximo (Laranja)
-pendentes = [p for p in pontos_para_o_mapa if not p['concluido']]
+pendentes =[p for p in pontos_para_o_mapa if not p['concluido']]
 if st.session_state.ultima_pos and pendentes:
     m_dist = float('inf')
     for p in pendentes:
@@ -122,10 +125,9 @@ for p in pontos_para_o_mapa:
     p['txt'] = "✔" if p['concluido'] else num
 
 # =================================================================
-# 5. O MAPA COM POPUP SEGURO
+# 6. HTML DO MAPA (COM A CORREÇÃO NO TARGET DO POPUP)
 # =================================================================
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else [-16.15, -47.96]
-
 mapa_html = f"""
 <!DOCTYPE html>
 <html>
@@ -141,28 +143,17 @@ mapa_html = f"""
             color: white; font-weight: bold; font-family: sans-serif;
             border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);
         }}
-        /* Estilo Dark para combinar com seu app */
-        .leaflet-popup-content-wrapper {{ background: #262730; color: white; border-radius: 12px; padding: 5px; }}
-        .leaflet-popup-tip {{ background: #262730; }}
-        .popup-btn {{
-            display: block; width: 100%; text-align: center;
-            padding: 12px 0; margin-top: 10px; border-radius: 8px;
-            text-decoration: none; color: white !important; font-family: sans-serif;
-            font-weight: bold; font-size: 14px; box-sizing: border-box;
-        }}
     </style>
 </head>
 <body>
     <div id="map"></div>
     <script>
         var map = L.map('map', {{ zoomControl: false }}).setView([{centro[0]}, {centro[1]}], 16);
-        
         L.tileLayer('http://{{s}}.google.com/vt/lyrs=m&x={{x}}&y={{y}}&z={{z}}', {{
             maxZoom: 20, subdomains:['mt0','mt1','mt2','mt3']
         }}).addTo(map);
 
         var pontos = {json.dumps(pontos_para_o_mapa)};
-        
         pontos.forEach(function(p) {{
             var icon = L.divIcon({{
                 className: '',
@@ -170,13 +161,13 @@ mapa_html = f"""
                 iconSize: [38, 38], iconAnchor: [19, 19]
             }});
 
-            var content = '<div style="min-width:160px; font-family:sans-serif;">' +
-                '<strong style="font-size:16px;">'+p.nome+'</strong>' +
+            var content = '<div style="color:white; font-family:sans-serif;">' +
+                '<strong>'+p.nome+'</strong>' +
                 '<a href="https://www.google.com/maps/dir/?api=1&destination='+p.lat+','+p.lng+'" target="_blank" class="popup-btn" style="background:#4285F4;">🚀 ABRIR GPS</a>';
             
             if (!p.concluido) {{
-                /* O segredo do target="_top" está aqui: ele recarrega o app inteiro com o comando */
-                content += '<a href="?concluir='+p.id+'" target="_top" class="popup-btn" style="background:#28a745;">✅ CONCLUIR</a>';
+                // CORREÇÃO AQUI: target="_parent" no lugar de target="_self"
+                content += '<a href="?concluir='+p.id+'" target="_parent" class="popup-btn" style="background:#28a745;">✅ CONCLUIR</a>';
             }}
             content += '</div>';
 
@@ -199,14 +190,14 @@ mapa_html = f"""
 st.components.v1.html(mapa_html, height=550)
 
 # =================================================================
-# 6. RODAPÉ DE GERENCIAMENTO (NÃO FOI TOCADO)
+# 7. RODAPÉ DE GERENCIAMENTO
 # =================================================================
 st.write("---")
 col1, col2 = st.columns(2)
 
 with col1:
     if st.session_state.lista_pacotes:
-        rota_txt = "📋 ROTA\n" + "\n".join([f"{'✅' if p['id'] in st.session_state.entregues_id else '❌'} {p['nome']}" for p in st.session_state.lista_pacotes])
+        rota_txt = "📋 ROTA\\n" + "\\n".join([f"{'✅' if p['id'] in st.session_state.entregues_id else '❌'} {p['nome']}" for p in st.session_state.lista_pacotes])
         st.download_button("💾 SALVAR TXT", data=rota_txt, file_name="rota.txt", use_container_width=True)
     else:
         st.button("💾 SALVAR TXT", disabled=True, use_container_width=True)
@@ -214,7 +205,5 @@ with col1:
 with col2:
     if st.button("🗑️ LIMPAR TUDO", use_container_width=True):
         if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
-        st.session_state.lista_pacotes = []
-        st.session_state.entregues_id = []
-        st.session_state.ultima_pos = None
-        st.rerun()
+        st.session_state.lista_pacotes =[]
+        st.session_state.entregues_id =
