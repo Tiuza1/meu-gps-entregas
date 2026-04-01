@@ -69,6 +69,20 @@ def carregar_banco():
 
 banco_total = carregar_banco()
 
+# =================================================================
+# 4. BUSCA E ADICIONAR
+# =================================================================
+c1, c2 = st.columns([5, 1])
+with c1:
+    busca = st.selectbox("Busca", options=["(Adicionar...)"] + list(banco_total.keys()), label_visibility="collapsed")
+with c2:
+    if st.button("➕"):
+        if busca and busca != "(Adicionar...)":
+            nid = f"{busca}_{len(st.session_state.lista_pacotes)}"
+            st.session_state.lista_pacotes.append({"id": nid, "nome": busca})
+            st.session_state.ultima_pos = banco_total[busca]
+            salvar_progresso(); st.rerun()
+
 
 # =================================================================
 # 5. LÓGICA DE QUAIS PONTOS MOSTRAR (VISUAL LIMPO)
@@ -181,17 +195,6 @@ if pendentes:
 # --- INÍCIO DO PAINEL DE CONTROLE (ABAIXO DO MAPA) ---
 st.write("---") # Linha divisória
 
-# 1. LINHA DE BUSCA E ADICIONAR
-c1, c2 = st.columns([4, 1])
-with c1:
-    busca = st.selectbox("Adicionar quadra:", options=["(Selecione...)"] + list(banco_total.keys()), label_visibility="collapsed")
-with c2:
-    if st.button("➕", use_container_width=True):
-        if busca and busca != "(Selecione...)":
-            nid = f"{busca}_{len(st.session_state.lista_pacotes)}"
-            st.session_state.lista_pacotes.append({"id": nid, "nome": busca})
-            st.session_state.ultima_pos = banco_total[busca]
-            salvar_progresso(); st.rerun()
 
 # 2. LINHA DE AÇÕES (PRÓXIMO PONTO / GPS / OK)
 if pendentes:
