@@ -76,18 +76,24 @@ if "concluir" in query_params:
     st.query_params.clear()
     st.rerun()
 
-# Na Seção 3. BUSCA E ADICIONAR
+# =================================================================
+# 3. BUSCA E ADICIONAR
+# =================================================================
+# ESTA LINHA ABAIXO É OBRIGATÓRIA (ela cria o c1 e o c2)
+c1, c2 = st.columns([5, 1]) 
+
 with c1:
-    # Adicionamos uma key fixa "campo_busca"
+    # Adicionamos a 'key' para evitar aquela repetição de menus
     busca = st.selectbox(
         "Busca", 
         options=["(Adicionar...)"] + list(banco_total.keys()), 
         label_visibility="collapsed",
-        key="campo_busca" 
+        key="campo_busca_principal"
     )
+
 with c2:
-    # Adicionamos uma key "botao_add"
-    if st.button("➕", key="botao_add"):
+    # Adicionamos a 'key' aqui também
+    if st.button("➕", key="botao_adicionar_entrega"):
         if busca and busca != "(Adicionar...)":
             nid = f"{busca}_{len(st.session_state.lista_pacotes)}"
             st.session_state.lista_pacotes.append({"id": nid, "nome": busca})
