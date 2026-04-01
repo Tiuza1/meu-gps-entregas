@@ -5,223 +5,182 @@ import re
 import os
 
 st.set_page_config(page_title="GPS Profissional", layout="wide", initial_sidebar_state="collapsed")
+
 st.markdown("""
 <style>
 [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stToolbar"], footer { display: none !important; }
 .block-container { padding: 0.5rem !important; max-width: 100% !important; }
 .stButton>button { border-radius: 10px !important; height: 45px !important; font-weight: bold !important; }
 .stSelectbox { margin-bottom: -15px !important; }
-iframe { border-radius: 20px !important; border: 1px solid #333 !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# Estado simplificado
-if 'app_state' not in st.session_state:
-    st.session_state.app_state = {'pacotes': [], 'entregues': [], 'posicao': None}
+# ESTADO
+if 'state' not in st.session_state:
+    st.session_state.state = {'pacotes': [], 'entregues': [], 'posicao': [-16.15, -47.96]}
 
-state = st.session_state.app_state
+state = st.session_state.state
 
-def save_state():
+def save():
     try:
         with open('state.json', 'w') as f:
             json.dump(state, f)
-    except:
-        pass
+    except: pass
 
-# Carrega estado
 if os.path.exists('state.json'):
     try:
-        with open('state.json', 'r') as f:
+        with open('state.json') as f:
             saved = json.load(f)
-            state['pacotes'] = saved.get('pacotes', [])
-            state['entregues'] = saved.get('entregues', [])
-            state['posicao'] = saved.get('posicao', None)
-    except:
-        pass
+            state.update(saved)
+    except: pass
 
-# Banco de dados locais
+# BANCO
 banco = {}
 try:
     with open('Lugares marcados.json', 'r', encoding='utf-8') as f:
         data = json.load(f)
-        for feature in data.get('features', []):
-            props = feature['properties']
-            nome = (props.get('title') or props.get('name') or '').strip()
+        for f in data['features']:
+            nome = str(f['properties'].get('title') or f['properties'].get('name') or '').strip()
             if nome:
-                coords = feature['geometry']['coordinates']
-                banco[nome] = (coords[1], coords[0])
+                coords = f['geometry']['coordinates']
+                banco[nome] = [coords[1], coords[0]]
 except:
-    st.error("❌ Arquivo 'Lugares marcados.json' não encontrado!")
-    st.stop()
+    banco = {}
 
-# Busca e adicionar
-col1, col2 = st.columns([5, 1])
-with col1:
+# SELECTBOX + BOTÃO
+c1, c2 = st.columns([4, 1])
+with c1:
     lugares = list(banco.keys())
-    selected = st.selectbox('', ['Adicionar...'] + lugares, label_visibility='collapsed')
-with col2:
-    if st.button('➕') and selected != 'Adicionar...':
-        id_pacote = f"{selected}_{len(state['pacotes'])}"
-        state['pacotes'].append({'id': id_pacote, 'nome': selected})
+    selected = st.selectbox("Selecione o endereço", [''] + lugares)
+with c2:
+    if st.button('➕') and selected:
+        pid = f"{selected}_{len(state['pacotes'])}"
+        state['pacotes'].append({'id': pid, 'nome': selected})
         state['posicao'] = banco[selected]
-        save_state()
+        save()
         st.rerun()
 
-# Processa clique no mapa
-if 'concluir' in st.query_params:
-    id_pacote = st.query_params['concluir']
-    if id_pacote not in state['entregues']:
-        for pacote in state['pacotes']:
-            if pacote['id'] == id_pacote:
-                state['entregues'].append(id_pacote)
-                state['posicao'] = banco[pacote['nome']]
-                save_state()
+# CONCLUI PACOTE
+if st.query_params.get('concluir'):
+    pid = st.query_params['concluir']
+    if pid not in state['entregues']:
+        for p in state['pacotes']:
+            if p['id'] == pid:
+                state['entregues'].append(pid)
+                state['posicao'] = banco[p['nome']]
+                save()
                 st.rerun()
                 break
 
-# Prepara marcadores do mapa
-marcadores = []
-for pacote in state['pacotes']:
-    nome = pacote['nome']
-    if nome in banco:
-        lat, lng = banco[nome]
-        done = pacote['id'] in state['entregues']
-        cor = '#28a745' if done else '#dc3545'
-        numero = re.findall(r'\d+', nome)
-        texto = '✔' if done else (numero[0] if numero else nome[:2])
-        marcadores.append({
-            'id': pacote['id'],
-            'lat': lat,
-            'lng': lng,
-            'nome': nome,
-            'done': done,
-            'cor': cor,
-            'texto': texto
-        })
+# MARCADORES
+markers = []
+for p in state['pacotes']:
+    if p['nome'] in banco:
+        lat, lng = banco[p['nome']]
+        done = p['id'] in state['entregues']
+        color = '#28a745' if done else '#dc3545'
+        num = re.findall('\\d+', p['nome'])
+        label = '✔' if done else (num[0] if num else p['nome'][:3])
+        markers.append({'id': p['id'], 'lat': lat, 'lng': lng, 'nome': p['nome'], 'done': done, 'color': color, 'label': label})
 
-# Próximo mais próximo
-pendentes = [m for m in marcadores if not m['done']]
-proximo_id = None
+# PRÓXIMO
+pendentes = [m for m in markers if not m['done']]
+next_id = None
 if state['posicao'] and pendentes:
-    menor_dist = float('inf')
+    min_d = float('inf')
     for m in pendentes:
-        dist = math.hypot(state['posicao'][0] - m['lat'], state['posicao'][1] - m['lng'])
-        if dist < menor_dist:
-            menor_dist = dist
-            proximo_id = m['id']
+        d = math.hypot(state['posicao'][0] - m['lat'], state['posicao'][1] - m['lng'])
+        if d < min_d:
+            min_d = d
+            next_id = m['id']
 
-for m in marcadores:
-    if m['id'] == proximo_id:
-        m['cor'] = '#fd7e14'
+if next_id:
+    for m in markers:
+        if m['id'] == next_id:
+            m['color'] = '#ff9800'
+            break
 
-centro_mapa = state['posicao'] or [-16.15, -47.96]
-
-# HTML DO MAPA (testado e funcional)
+# MAPA GOOGLE (COMO ORIGINAL)
 map_html = f'''
 <!DOCTYPE html>
 <html>
 <head>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <style>
-        #map {{height: 70vh; width: 100%; border-radius: 20px;}}
-        .pin {{width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 14px; border: 3px solid white; box-shadow: 0 4px 8px rgba(0,0,0,0.3); cursor: pointer;}}
-        .popup-btn {{width: 100%; padding: 12px; margin: 5px 0; border: none; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer;}}
-        .gps-btn {{background: #4285f4; color: white;}}
-        .done-btn {{background: #34a853; color: white;}}
-    </style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+#map{{height:600px;width:100%;}}
+.pin{{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;border:3px solid white;box-shadow:0 4px 12px rgba(0,0,0,0.4);cursor:pointer;}}
+.btn-gps{{width:100%;padding:12px;margin:5px 0;border:none;border-radius:8px;background:#4285f4;color:white;font-weight:bold;cursor:pointer;}}
+.btn-ok{{width:100%;padding:12px;margin:5px 0;border:none;border-radius:8px;background:#34a853;color:white;font-weight:bold;cursor:pointer;}}
+</style>
 </head>
-<body style="margin:0; padding:0;">
-    <div id="map"></div>
-    <script>
-        var map = L.map('map').setView([{centro_mapa[0]}, {centro_mapa[1]}], 15);
-        L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
-            attribution: '&copy; OpenStreetMap',
-            maxZoom: 19
-        }}).addTo(map);
-        
-        var markers = {json.dumps(marcadores)};
-        
-        markers.forEach(function(markerData) {{
-            var pinColor = markerData.done ? 'opacity: 0.6' : 'opacity: 1';
-            var pinHtml = '<div class="pin" style="background: ' + markerData.cor + '; ' + pinColor + '">' + markerData.texto + '</div>';
-            
-            var icon = L.divIcon({{
-                html: pinHtml,
-                iconSize: [35, 35],
-                iconAnchor: [17, 17],
-                className: ''
-            }});
-            
-            var marker = L.marker([markerData.lat, markerData.lng], {{icon: icon}}).addTo(map);
-            
-            var nomeSafe = markerData.nome.replace(/'/g, "&#39;");
-            var popup = '<div style="min-width: 220px; font-family: Arial;">' +
-                '<div style="font-size: 16px; font-weight: bold; margin-bottom: 10px; color: #333;">📍 ' + nomeSafe + '</div>' +
-                '<button class="popup-btn gps-btn" onclick="window.open(\'https://www.google.com/maps/dir/?api=1&destination=' + 
-                markerData.lat + ',' + markerData.lng + '\', \'_blank\')">🚀 Abrir GPS</button>';
-            
-            if (!markerData.done) {{
-                popup += '<button class="popup-btn done-btn" onclick="marcarConcluido(\'' + 
-                         markerData.id + '\', ' + markerData.lat + ', ' + markerData.lng + ')">✅ Concluir</button>';
-            }} else {{
-                popup += '<div style="text-align: center; color: #34a853; font-weight: bold; margin-top: 10px;">✔️ Concluído</div>';
-            }}
-            popup += '</div>';
-            
-            marker.bindPopup(popup, {{closeButton: false, autoClose: true}});
-        }});
-        
-        function marcarConcluido(id, lat, lng) {{
-            var url = new URL(window.location.href);
-            url.searchParams.set('concluir', id);
-            window.location.href = url.toString();
-        }}
-        
-        if (navigator.geolocation) {{
-            navigator.geolocation.watchPosition(function(position) {{
-                var pos = [position.coords.latitude, position.coords.longitude];
-                if (!window.userMarker) {{
-                    window.userMarker = L.circleMarker(pos, {{
-                        radius: 10,
-                        fillColor: "#1a73e8",
-                        color: "#ffffff",
-                        weight: 3,
-                        fillOpacity: 0.9
-                    }}).addTo(map);
-                }} else {{
-                    window.userMarker.setLatLng(pos);
-                }}
-            }}, function() {{}}, {{enableHighAccuracy: true}});
-        }}
-    </script>
+<body>
+<div id="map"></div>
+<script>
+var map = L.map("map").setView([{state['posicao'][0]}, {state['posicao'][1]}], 15);
+L.tileLayer("https://mt{{Math.round(Math.random()*3)}}.google.com/vt/lyrs=m&x={{x}}&y={{y}}&z={{z}}", {{maxZoom:20}}).addTo(map);
+var points = {json.dumps(markers)};
+points.forEach(function(pt){{
+var icon = L.divIcon({{
+className: "",
+html: '<div class="pin" style="background:'+pt.color+';'+(pt.done?'opacity:0.6;':'')+'">'+pt.label+'</div>',
+iconSize: [40,40], iconAnchor: [20,20]
+}});
+var marker = L.marker([pt.lat, pt.lng], {{icon: icon}}).addTo(map);
+var nome = pt.nome.replace(/'/g,"&apos;");
+var popup = '<div style="width:240px;font-family:Arial;">'+
+'<div style="font-size:18px;font-weight:bold;margin-bottom:12px;">📍 '+nome+'</div>'+
+'<button class="btn-gps" onclick="window.open(&apos;https://www.google.com/maps/dir/?api=1&destination='+pt.lat+','+pt.lng+'&apos;, &apos;_blank&apos;)">🚀 Google Maps</button>';
+if(!pt.done){{
+popup += '<button class="btn-ok" onclick="done(&apos;'+pt.id+'&apos;)">✅ Feito</button>';
+}} else {{
+popup += '<div style="text-align:center;color:#34a853;font-size:16px;font-weight:bold;margin-top:10px;">✔️ Concluído</div>';
+}}
+popup += '</div>';
+marker.bindPopup(popup, {{closeButton:false,autoClose:false}});
+}});
+function done(id){{
+var url = new URL(window.location);
+url.searchParams.set("concluir", id);
+window.location.href = url.toString();
+}}
+map.locate({{watch:true,setView:false,enableHighAccuracy:true}});
+map.on("locationfound", function(e){{
+if(!window.gpsMarker){{
+window.gpsMarker = L.circleMarker(e.latlng, {{radius:12,fillColor:"#1e88e5",color:"white",weight:3,fillOpacity:0.9}}).addTo(map);
+}} else {{
+window.gpsMarker.setLatLng(e.latlng);
+}}
+}});
+</script>
 </body>
 </html>
 '''
 
 st.components.v1.html(map_html, height=600)
 
-# Painel inferior
+# INFO E BOTÕES
 st.markdown("---")
-if pendentes:
-    for m in marcadores:
-        if m['id'] == proximo_id:
-            st.success(f"**📍 Próximo:** {m['nome']}")
+pendentes = [m for m in markers if not m['done']]
+if pendentes and next_id:
+    for m in markers:
+        if m['id'] == next_id:
+            st.info(f"**Próximo destino:** {m['nome']}")
+            st.caption("👆 Clique na bolinha **laranja** para abrir GPS ou marcar como feito!")
             break
 
-cols = st.columns(2)
-with cols[0]:
+col1, col2 = st.columns(2)
+with col1:
     if state['pacotes']:
-        rota_txt = "📦 ROTA DE ENTREGAS\n" + "═" * 40 + "\n\n"
+        txt = "ROTA DE ENTREGAS\\n" + "="*50 + "\\n\\n"
         for i, p in enumerate(state['pacotes'], 1):
-            status = "✅" if p['id'] in state['entregues'] else "🔄"
-            rota_txt += f"{i:2d}. {status} {p['nome']}\n"
-        st.download_button("💾 Exportar Rota", rota_txt, "rota_entregas.txt")
+            s = "✅" if p['id'] in state['entregues'] else "⏳"
+            txt += f"{i:2}. {s} {p['nome']}\\n"
+        st.download_button("💾 Salvar rota", txt, "entregas.txt", "text/plain")
 
-with cols[1]:
-    if st.button("🗑️ Limpar Tudo"):
+with col2:
+    if st.button("🗑️ Resetar"):
         state['pacotes'] = []
         state['entregues'] = []
-        state['posicao'] = None
-        save_state()
+        save()
         st.rerun()
