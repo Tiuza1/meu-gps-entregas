@@ -1,3 +1,74 @@
+import json
+import streamlit as st
+import re
+import os
+import math
+
+# =================================================================
+# 1. CONFIGURAÇÃO E MENU ESCURO (IGUAL VOCÊ PEDIU)
+# =================================================================
+st.set_page_config(page_title="GPS Profissional", layout="wide", initial_sidebar_state="collapsed")
+
+st.markdown("""
+    <style>
+    /* ESCONDE O HEADER E O MENU LATERAL */
+    [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stToolbar"], footer { display: none !important; }
+
+    /* AJUSTA O ESPAÇAMENTO DA TELA */
+    .block-container { 
+        padding: 0.5rem !important; 
+        max-width: 100% !important;
+    }
+
+    /* ESTILO DOS BOTÕES LADO A LADO */
+    .stButton>button {
+        border-radius: 10px !important;
+        height: 45px !important;
+        font-weight: bold !important;
+    }
+    
+    /* ESTILO DA BARRA DE BUSCA */
+    .stSelectbox { margin-bottom: -15px !important; }
+
+    /* DEIXA O MAPA COM BORDAS ARREDONDADAS */
+    iframe { border-radius: 20px !important; border: 1px solid #333 !important; }
+    </style>
+""", unsafe_allow_html=True)
+
+# =================================================================
+# 2. MEMÓRIA DO SISTEMA
+# =================================================================
+FILE_SAVE = "progresso_final.json"
+
+if 'lista_pacotes' not in st.session_state: st.session_state.lista_pacotes = []
+if 'entregues_id' not in st.session_state: st.session_state.entregues_id = []
+if 'ultima_pos' not in st.session_state: st.session_state.ultima_pos = None
+
+def salvar_progresso():
+    dados = {"lista_pacotes": st.session_state.lista_pacotes, "entregues_id": st.session_state.entregues_id, "ultima_pos": st.session_state.ultima_pos}
+    with open(FILE_SAVE, "w") as f: json.dump(dados, f)
+
+if not st.session_state.lista_pacotes and os.path.exists(FILE_SAVE):
+    try:
+        with open(FILE_SAVE, "r") as f:
+            d = json.load(f)
+            st.session_state.lista_pacotes = d.get("lista_pacotes", [])
+            st.session_state.entregues_id = d.get("entregues_id", [])
+            st.session_state.ultima_pos = d.get("ultima_pos")
+    except: pass
+
+@st.cache_data
+def carregar_banco():
+    try:
+        with open('Lugares marcados.json', 'r', encoding='utf-8') as f:
+            dados_j = json.load(f)
+        return {str(l['properties'].get('title') or l['properties'].get('name')).strip(): 
+                (l['geometry']['coordinates'][1], l['geometry']['coordinates'][0]) 
+                for l in dados_j.get('features',[])}
+    except: return {}
+
+banco_total = carregar_banco()
+
 # =================================================================
 # 4. BUSCA E ADICIONAR
 # =================================================================
