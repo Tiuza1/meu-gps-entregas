@@ -2,61 +2,52 @@ import json
 import streamlit as st
 import re
 import os
-import time
+import math
 
 # =================================================================
-# 1. PROCESSAR AÇÃO (DEVE SER A PRIMEIRA COISA NO CÓDIGO)
+# 1. CONFIGURAÇÃO E MENU ESCURO (IGUAL VOCÊ PEDIU)
 # =================================================================
-params = st.query_params
-if "action" in params and "id" in params:
-    # Salvamos o ID para marcar como feito antes de limpar a URL
-    action_item_id = str(params["id"])
-    action_type = params["action"]
-    
-    # Inicializa a lista se não existir para evitar erro no primeiro clique
-    if 'entregues_id' not in st.session_state: st.session_state.entregues_id = []
-    
-    if action_type == "done":
-        if action_item_id not in st.session_state.entregues_id:
-            st.session_state.entregues_id.append(action_item_id)
-            # Tenta centralizar no ponto que acabou de marcar
-            if 'lista_pacotes' in st.session_state:
-                p = next((x for x in st.session_state.lista_pacotes if str(x['id']) == action_item_id), None)
-                if p: st.session_state.ultima_pos = (p.get('lat'), p.get('lng'))
+st.set_page_config(page_title="GPS Profissional", layout="wide", initial_sidebar_state="collapsed")
 
-    # Limpa a URL e recarrega para a interface ficar limpa
-    st.query_params.clear()
-    st.rerun()
+st.markdown("""
+    <style>
+    /* ESCONDE TUDO O QUE NÃO PRECISA */
+    [data-testid="stHeader"], [data-testid="stToolbar"], footer { display: none !important; }
+
+    /* ÍCONE DO MENU ESCURO E NO TOPO ESQUERDO */
+    [data-testid="stSidebarCollapsedControl"] {
+        background-color: #1E1E1E !important;
+        color: white !important;
+        border-radius: 10px !important;
+        width: 55px !important;
+        height: 55px !important;
+        top: 8px !important;
+        left: 8px !important;
+        z-index: 1000000 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        box-shadow: 0px 4px 10px rgba(0,0,0,0.4) !important;
+    }
+    [data-testid="stSidebarCollapsedControl"] svg { fill: white !important; width: 32px !important; height: 32px !important; }
+
+    .block-container { padding: 4.5rem 0.5rem 0.5rem 0.5rem !important; }
+    .stButton>button { width: 100% !important; height: 50px !important; border-radius: 12px !important; font-weight: bold !important; }
+    iframe { border: none !important; border-radius: 15px !important; }
+    </style>
+""", unsafe_allow_html=True)
 
 # =================================================================
-# 2. CONFIGURAÇÃO E MEMÓRIA
+# 2. MEMÓRIA DO SISTEMA
 # =================================================================
-st.set_page_config(page_title="Painel do Entregador", layout="wide")
-
 FILE_SAVE = "progresso_final.json"
 
 if 'lista_pacotes' not in st.session_state: st.session_state.lista_pacotes = []
 if 'entregues_id' not in st.session_state: st.session_state.entregues_id = []
 if 'ultima_pos' not in st.session_state: st.session_state.ultima_pos = None
 
-@st.cache_data
-def carregar_banco():
-    try:
-        with open('Lugares marcados.json', 'r', encoding='utf-8') as f:
-            db = json.load(f)
-        return {str(l['properties'].get('title') or l['properties'].get('name')).strip(): 
-                (l['geometry']['coordinates'][1], l['geometry']['coordinates'][0]) 
-                for l in db.get('features',[])}
-    except: return {}
-
-banco_total = carregar_banco()
-
 def salvar_progresso():
-    dados = {
-        "lista_pacotes": st.session_state.lista_pacotes, 
-        "entregues_id": st.session_state.entregues_id, 
-        "ultima_pos": st.session_state.ultima_pos
-    }
+    dados = {"lista_pacotes": st.session_state.lista_pacotes, "entregues_id": st.session_state.entregues_id, "ultima_pos": st.session_state.ultima_pos}
     with open(FILE_SAVE, "w") as f: json.dump(dados, f)
 
 if not st.session_state.lista_pacotes and os.path.exists(FILE_SAVE):
@@ -68,48 +59,77 @@ if not st.session_state.lista_pacotes and os.path.exists(FILE_SAVE):
             st.session_state.ultima_pos = d.get("ultima_pos")
     except: pass
 
-# =================================================================
-# 3. ESTILOS VISUAIS
-# =================================================================
-st.markdown("""
-    <style>
-    .stButton>button { border-radius: 12px; height: 3rem; font-weight: bold; width: 100%; }
-    .card-entrega {
-        background: #1E1E1E; border-left: 6px solid #dc3545;
-        padding: 15px; border-radius: 10px; margin-bottom: 5px; color: white;
-    }
-    .concluido { border-left: 6px solid #28a745 !important; opacity: 0.5; }
-    </style>
-""", unsafe_allow_html=True)
+@st.cache_data
+def carregar_banco():
+    try:
+        with open('Lugares marcados.json', 'r', encoding='utf-8') as f:
+            dados_j = json.load(f)
+        return {str(l['properties'].get('title') or l['properties'].get('name')).strip(): 
+                (l['geometry']['coordinates'][1], l['geometry']['coordinates'][0]) 
+                for l in dados_j.get('features',[])}
+    except: return {}
 
-st.title("🚚 Painel do Entregador")
+banco_total = carregar_banco()
 
-with st.expander("⚙️ CONFIGURAR ROTA"):
-    busca = st.selectbox("Buscar Local", options=[""] + list(banco_total.keys()))
-    if st.button("➕ ADICIONAR"):
-        if busca:
-            coords = banco_total[busca]
-            nid = str(int(time.time() * 1000))
-            st.session_state.lista_pacotes.append({"id": nid, "nome": busca, "lat": coords[0], "lng": coords[1]})
-            salvar_progresso(); st.rerun()
-    
+# =================================================================
+# 3. MENU LATERAL (CONFIGURAÇÕES)
+# =================================================================
+with st.sidebar:
+    st.header("⚙️ Opções")
     if st.button("🗑️ LIMPAR TUDO"):
-        st.session_state.lista_pacotes = []; st.session_state.entregues_id = []
         if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
+        st.session_state.lista_pacotes = []; st.session_state.entregues_id = []; st.session_state.ultima_pos = None
         st.rerun()
 
 # =================================================================
-# 4. PREPARAÇÃO DO MAPA
+# 4. BUSCA E ADICIONAR
 # =================================================================
-pontos_mapa = []
-for p in st.session_state.lista_pacotes:
-    feito = str(p['id']) in st.session_state.entregues_id
-    cor = "#28a745" if feito else "#dc3545"
-    num = re.findall(r'\d+', p['nome'])
-    label = num[0] if num else p['nome'][:2]
-    pontos_mapa.append({"id": str(p['id']), "lat": p['lat'], "lng": p['lng'], "nome": p['nome'], "concluido": feito, "cor": cor, "label": label})
+c1, c2 = st.columns([5, 1])
+with c1:
+    busca = st.selectbox("Busca", options=["(Adicionar...)"] + list(banco_total.keys()), label_visibility="collapsed")
+with c2:
+    if st.button("➕"):
+        if busca and busca != "(Adicionar...)":
+            nid = f"{busca}_{len(st.session_state.lista_pacotes)}"
+            st.session_state.lista_pacotes.append({"id": nid, "nome": busca})
+            st.session_state.ultima_pos = banco_total[busca]
+            salvar_progresso(); st.rerun()
 
-centro = st.session_state.ultima_pos if st.session_state.ultima_pos else (pontos_mapa[0]['lat'], pontos_mapa[0]['lng']) if pontos_mapa else [-16.15, -47.96]
+# =================================================================
+# 5. LÓGICA DE QUAIS PONTOS MOSTRAR (VISUAL LIMPO)
+# =================================================================
+proximo_id = None
+pontos_para_o_mapa = []
+
+# Filtramos apenas os que você adicionou
+for p in st.session_state.lista_pacotes:
+    coords = banco_total.get(p['nome'], (0,0))
+    concluido = p['id'] in st.session_state.entregues_id
+    
+    # Lógica da cor (Verde, Laranja ou Vermelho)
+    cor = "#28a745" if concluido else "#dc3545" # Padrão
+    pontos_para_o_mapa.append({"id": p['id'], "lat": coords[0], "lng": coords[1], "nome": p['nome'], "concluido": concluido, "cor": cor})
+
+# Achar o mais próximo (Laranja)
+pendentes = [p for p in pontos_para_o_mapa if not p['concluido']]
+if st.session_state.ultima_pos and pendentes:
+    m_dist = float('inf')
+    for p in pendentes:
+        d = math.sqrt((st.session_state.ultima_pos[0]-p['lat'])**2 + (st.session_state.ultima_pos[1]-p['lng'])**2)
+        if d < m_dist: 
+            m_dist = d
+            proximo_id = p['id']
+
+# Atualiza a cor do próximo para Laranja e define texto
+for p in pontos_para_o_mapa:
+    if p['id'] == proximo_id: p['cor'] = "#fd7e14"
+    num = re.findall(r'\d+', p['nome'])[0] if re.findall(r'\d+', p['nome']) else p['nome'][:2]
+    p['txt'] = "✔" if p['concluido'] else num
+
+# =================================================================
+# 6. O MAPA RÁPIDO (IGUAL AO DAS BOLINHAS VERMELHAS)
+# =================================================================
+centro = st.session_state.ultima_pos if st.session_state.ultima_pos else [-16.15, -47.96]
 
 mapa_html = f"""
 <!DOCTYPE html>
@@ -118,84 +138,67 @@ mapa_html = f"""
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        #map {{ height: 450px; width: 100%; border-radius: 15px; }}
-        body {{ margin: 0; }}
+        #map {{ height: 100vh; width: 100%; background: #e5e3df; }}
+        body {{ margin: 0; padding: 0; }}
         .pin {{
-            width: 32px; height: 32px; border-radius: 50%; border: 2px solid white;
+            width: 38px; height: 38px; border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
-            color: white; font-weight: bold; font-family: sans-serif; font-size: 13px;
-        }}
-        /* Estilo do link que parece um botão */
-        .btn-link {{
-            background-color: #28a745; color: white !important; 
-            padding: 12px; border-radius: 8px; width: 100%; 
-            font-weight: bold; font-size: 14px; text-decoration: none;
-            display: block; text-align: center; font-family: sans-serif;
-            margin-top: 10px; box-sizing: border-box;
+            color: white; font-weight: bold; font-family: sans-serif;
+            border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);
         }}
     </style>
 </head>
 <body>
     <div id="map"></div>
     <script>
-        var map = L.map('map', {{zoomControl: false}}).setView([{centro[0]}, {centro[1]}], 16);
-        L.tileLayer('https://{{s}}.google.com/vt/lyrs=m&x={{x}}&y={{y}}&z={{z}}', {{
+        var map = L.map('map', {{ zoomControl: false }}).setView([{centro[0]}, {centro[1]}], 16);
+        
+        // Camada do Google Maps
+        L.tileLayer('http://{{s}}.google.com/vt/lyrs=m&x={{x}}&y={{y}}&z={{z}}', {{
             maxZoom: 20, subdomains:['mt0','mt1','mt2','mt3']
         }}).addTo(map);
 
-        var pontos = {json.dumps(pontos_mapa)};
-        
-        // Pega a URL atual sem os parâmetros antigos
-        var baseUrl = window.location.origin + window.location.pathname;
+        var pontos = {json.dumps(pontos_para_o_mapa)};
+        var userMarker;
 
+        // Desenha APENAS os pontos que você adicionou
         pontos.forEach(function(p) {{
             var icon = L.divIcon({{
                 className: '',
-                html: `<div class="pin" style="background:${{p.cor}}">${{p.concluido ? '✓' : p.label}}</div>`,
-                iconSize: [32, 32], iconAnchor: [16, 16]
+                html: '<div class="pin" style="background:'+p.cor+'; opacity:'+(p.concluido ? 0.6 : 1)+'">'+p.txt+'</div>',
+                iconSize: [38, 38], iconAnchor: [19, 19]
             }});
+            L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map);
+        }});
 
-            // O SEGREDO: target="_top" em um link comum <a>
-            var popupContent = `
-                <div style="text-align:center; min-width:160px;">
-                    <b style="font-family:sans-serif;">${{p.nome}}</b><br>
-                    <a href="${{baseUrl}}?action=done&id=${{p.id}}" target="_top" class="btn-link">
-                        ✅ MARCAR ENTREGUE
-                    </a>
-                </div>`;
-
-            var marker = L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map);
-            if (!p.concluido) {{
-                marker.bindPopup(popupContent);
+        // GPS LISO (Igual ao código que você gostou)
+        function onLocationFound(e) {{
+            if (!userMarker) {{
+                userMarker = L.circleMarker(e.latlng, {{
+                    radius: 9, fillColor: "#4285F4", color: "white", weight: 3, opacity: 1, fillOpacity: 1
+                }}).addTo(map);
+            }} else {{
+                userMarker.setLatLng(e.latlng);
             }}
-        }});
-
-        map.locate({{setView: false, watch: true, enableHighAccuracy: true}});
-        map.on('locationfound', function(e) {{
-            L.circleMarker(e.latlng, {{radius: 7, color: '#4285F4', fillOpacity: 1}}).addTo(map);
-        }});
+        }}
+        map.on('locationfound', onLocationFound);
+        map.locate({{ watch: true, enableHighAccuracy: true, setView: false }});
     </script>
 </body>
 </html>
 """
 
-st.components.v1.html(mapa_html, height=460)
+st.components.v1.html(mapa_html, height=550)
 
-# =================================================================
-# 5. LISTA DE APOIO (OK FUNCIONANDO)
-# =================================================================
-st.subheader("📋 Roteiro")
-for p in pontos_mapa:
-    if not p['concluido']:
-        with st.container():
-            st.markdown(f'<div class="card-entrega"><strong>{p["nome"]}</strong></div>', unsafe_allow_html=True)
-            c1, c2 = st.columns(2)
-            url_maps = f"https://www.google.com/maps/search/?api=1&query={p['lat']},{p['lng']}"
-            c1.markdown(f'<a href="{url_maps}" target="_blank" style="background:#4285F4; color:white; text-decoration:none; padding:10px; border-radius:10px; display:block; text-align:center; font-weight:bold; font-size:14px;">📍 VER NO MAPS</a>', unsafe_allow_html=True)
-            
-            # Esse botão OK já funciona pois é nativo do Streamlit
-            if c2.button("✅ OK", key=f"btn_{p['id']}"):
-                st.query_params.update(action="done", id=p['id'])
-                st.rerun()
-
-salvar_progresso()
+# Painel de Controle (Abaixo do mapa)
+if pendentes:
+    p_atual = next(p for p in pontos_para_o_mapa if p['id'] == proximo_id) if proximo_id else pendentes[0]
+    st.info(f"📍 **Próximo:** {p_atual['nome']}")
+    c_gps, c_ok = st.columns(2)
+    with c_gps:
+        st.link_button("🚀 GPS", f"https://www.google.com/maps/dir/?api=1&destination={p_atual['lat']},{p_atual['lng']}")
+    with c_ok:
+        if st.button("✅ FEITO"):
+            st.session_state.entregues_id.append(p_atual['id'])
+            st.session_state.ultima_pos = [p_atual['lat'], p_atual['lng']]
+            salvar_progresso(); st.rerun()
