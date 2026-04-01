@@ -11,34 +11,43 @@ st.set_page_config(page_title="GPS Profissional", layout="wide", initial_sidebar
 
 st.markdown("""
     <style>
-    /* FORÇA O BOTÃO DO MENU A APARECER NO CANTO SUPERIOR ESQUERDO */
+    /* 1. DEIXA A BARRA SUPERIOR TOTALMENTE TRANSPARENTE */
+    header[data-testid="stHeader"] {
+        background-color: rgba(0,0,0,0) !important;
+        border-bottom: none !important;
+    }
+
+    /* 2. POSICIONA E ESTILIZA O BOTÃO DO MENU (HAMBÚRGUER) */
+    /* Ele vai ficar flutuando no canto superior esquerdo */
     [data-testid="stSidebarCollapsedControl"] {
-        background-color: #ff4b4b !important; /* Cor de destaque (Vermelho) */
+        background-color: #1E1E1E !important; /* Cor escura igual ao fundo */
         color: white !important;
-        border-radius: 50% !important;
-        width: 50px !important;
-        height: 50px !important;
-        top: 15px !important;
-        left: 15px !important;
-        z-index: 999999 !important;
+        border-radius: 10px !important;
+        width: 45px !important;
+        height: 45px !important;
+        top: 10px !important;
+        left: 10px !important;
+        position: fixed !important;
+        z-index: 1000000 !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
-        box-shadow: 0px 4px 15px rgba(0,0,0,0.5) !important;
-    }
-    
-    /* Garante que o ícone dentro do botão seja branco */
-    [data-testid="stSidebarCollapsedControl"] svg {
-        fill: white !important;
-        width: 30px !important;
-        height: 30px !important;
+        box-shadow: 0px 4px 10px rgba(0,0,0,0.4) !important;
+        border: 1px solid #333 !important;
     }
 
-    /* Ajusta o espaçamento do topo para não cobrir o botão */
-    .block-container { padding-top: 4rem !important; }
-    
-    /* Esconde o cabeçalho padrão */
-    [data-testid="stHeader"] { display: none !important; }
+    /* Garante que o ícone do menu seja branco */
+    [data-testid="stSidebarCollapsedControl"] svg {
+        fill: white !important;
+    }
+
+    /* 3. AJUSTA O ESPAÇO DO CONTEÚDO PARA NÃO SUBIR DEMAIS */
+    .block-container {
+        padding-top: 0rem !important;
+    }
+
+    /* Remove lixo visual */
+    [data-testid="stToolbar"], footer { display: none !important; }
     </style>
 """, unsafe_allow_html=True)
 
