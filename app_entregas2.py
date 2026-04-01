@@ -177,6 +177,8 @@ mapa_html = f"""
 </html>
 """
 
+st.components.v1.html(mapa_html, height=550)
+
 # =================================================================
 # 7. PAINEL DE CONTROLE ÚNICO (DENTRO E FORA DO CLIQUE)
 # =================================================================
