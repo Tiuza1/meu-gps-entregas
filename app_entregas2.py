@@ -4,67 +4,65 @@ import re
 import os
 import math
 
-# =================================================================
-# 1. CONFIGURAÇÃO E MENU ESCURO
-# =================================================================
+# 1. CONFIGURAÇÃO (Sempre primeiro)
 st.set_page_config(page_title="GPS Profissional", layout="wide", initial_sidebar_state="collapsed")
 
-st.markdown("""
-    <style>
-    [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stToolbar"], footer { display: none !important; }
-    .block-container { padding: 0.5rem !important; max-width: 100% !important; }
-    .stButton>button { border-radius: 10px !important; height: 45px !important; font-weight: bold !important; }
-    .stSelectbox { margin-bottom: -15px !important; }
-    iframe { border-radius: 20px !important; border: 1px solid #333 !important; }
-    
-    /* Ajuste para o Popup do Leaflet */
-    .leaflet-popup-content-wrapper { border-radius: 12px !important; padding: 5px !important; }
-    .leaflet-popup-content { margin: 10px !important; }
-    </style>
-""", unsafe_allow_html=True)
+# 2. FUNÇÕES DE SUPORTE (Precisam ser definidas antes de serem usadas)
+def salvar_progresso():
+    dados = {"lista_pacotes": st.session_state.lista_pacotes, "entregues_id": st.session_state.entregues_id, "ultima_pos": st.session_state.ultima_pos}
+    with open("progresso_final.json", "w") as f: json.dump(dados, f)
 
-# =================================================================
-# 2. MEMÓRIA E PROCESSAMENTO (Mova para cá, logo após os imports)
-# =================================================================
-FILE_SAVE = "progresso_final.json"
+@st.cache_data
+def carregar_banco():
+    try:
+        with open('Lugares marcados.json', 'r', encoding='utf-8') as f:
+            dados_j = json.load(f)
+        return {str(l['properties'].get('title') or l['properties'].get('name')).strip(): 
+                (l['geometry']['coordinates'][1], l['geometry']['coordinates'][0]) 
+                for l in dados_j.get('features',[])}
+    except: return {}
+
+# 3. CRIAR AS VARIÁVEIS BASE (Aqui resolvemos o erro banco_total)
+banco_total = carregar_banco()
 
 if 'lista_pacotes' not in st.session_state: st.session_state.lista_pacotes = []
 if 'entregues_id' not in st.session_state: st.session_state.entregues_id = []
 if 'ultima_pos' not in st.session_state: st.session_state.ultima_pos = None
 
-# --- LÓGICA DE CONCLUIR (DEVE VIR ANTES DE TUDO) ---
+# 4. LÓGICA DE URL (Resolve a duplicação: Limpa tudo antes de desenhar a tela)
 qp = st.query_params
 if "concluir" in qp:
     id_alvo = qp["concluir"]
     if id_alvo not in st.session_state.entregues_id:
         st.session_state.entregues_id.append(id_alvo)
-        # Salva e limpa a URL IMEDIATAMENTE
+        # Atualiza a posição para o local entregue
+        for p in st.session_state.lista_pacotes:
+            if p['id'] == id_alvo:
+                st.session_state.ultima_pos = banco_total.get(p['nome'])
+        salvar_progresso()
         st.query_params.clear()
-        st.rerun() # Interrompe o código aqui e recomeça limpo
+        st.rerun() # Mata o processo atual e recomeça a página limpa
 
-# ... (mantenha a função carregar_banco e salvar_progresso aqui)
+# 5. ESTILOS CSS
+st.markdown("""<style>... seu css aqui ...</style>""", unsafe_allow_html=True)
 
-# =================================================================
-# 3. ÁREA DE BUSCA (COM CONTAINER PARA EVITAR DUPLICAÇÃO)
-# =================================================================
-menu_container = st.container() # Cria um espaço isolado
-
-with menu_container:
+# 6. BUSCA E ADICIONAR (Dentro de um container para travar a interface)
+with st.container():
     c1, c2 = st.columns([5, 1])
     with c1:
-        # A chave (key) com um timestamp ou ID fixo evita o "fantasma"
         busca = st.selectbox(
             "Busca", 
             options=["(Adicionar...)"] + list(banco_total.keys()), 
             label_visibility="collapsed",
-            key="busca_unica" 
+            key="busca_principal_v1"
         )
     with c2:
-        if st.button("➕", key="btn_add_unico"):
+        if st.button("➕", key="btn_add_v1"):
             if busca and busca != "(Adicionar...)":
                 nid = f"{busca}_{len(st.session_state.lista_pacotes)}"
                 st.session_state.lista_pacotes.append({"id": nid, "nome": busca})
                 st.session_state.ultima_pos = banco_total[busca]
+                salvar_progresso()
                 st.rerun()
 # =================================================================
 # 4. PREPARAÇÃO DOS PONTOS
