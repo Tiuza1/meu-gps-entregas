@@ -11,29 +11,34 @@ st.set_page_config(page_title="GPS Profissional", layout="wide", initial_sidebar
 
 st.markdown("""
     <style>
-    /* ESCONDE TUDO O QUE NÃO PRECISA */
-    [data-testid="stHeader"], [data-testid="stToolbar"], footer { display: none !important; }
-
-    /* ÍCONE DO MENU ESCURO E NO TOPO ESQUERDO */
+    /* FORÇA O BOTÃO DO MENU A APARECER NO CANTO SUPERIOR ESQUERDO */
     [data-testid="stSidebarCollapsedControl"] {
-        background-color: #1E1E1E !important;
+        background-color: #ff4b4b !important; /* Cor de destaque (Vermelho) */
         color: white !important;
-        border-radius: 10px !important;
-        width: 55px !important;
-        height: 55px !important;
-        top: 8px !important;
-        left: 8px !important;
-        z-index: 1000000 !important;
+        border-radius: 50% !important;
+        width: 50px !important;
+        height: 50px !important;
+        top: 15px !important;
+        left: 15px !important;
+        z-index: 999999 !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
-        box-shadow: 0px 4px 10px rgba(0,0,0,0.4) !important;
+        box-shadow: 0px 4px 15px rgba(0,0,0,0.5) !important;
     }
-    [data-testid="stSidebarCollapsedControl"] svg { fill: white !important; width: 32px !important; height: 32px !important; }
+    
+    /* Garante que o ícone dentro do botão seja branco */
+    [data-testid="stSidebarCollapsedControl"] svg {
+        fill: white !important;
+        width: 30px !important;
+        height: 30px !important;
+    }
 
-    .block-container { padding: 4.5rem 0.5rem 0.5rem 0.5rem !important; }
-    .stButton>button { width: 100% !important; height: 50px !important; border-radius: 12px !important; font-weight: bold !important; }
-    iframe { border: none !important; border-radius: 15px !important; }
+    /* Ajusta o espaçamento do topo para não cobrir o botão */
+    .block-container { padding-top: 4rem !important; }
+    
+    /* Esconde o cabeçalho padrão */
+    [data-testid="stHeader"] { display: none !important; }
     </style>
 """, unsafe_allow_html=True)
 
