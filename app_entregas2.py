@@ -72,19 +72,24 @@ if "concluir" in query_params:
     st.query_params.clear() 
     st.rerun() # O rerun aqui é essencial para limpar a UI e começar do zero sem os params na URL
 
-# =================================================================
-# 3. BUSCA E ADICIONAR
-# =================================================================
-c1, c2 = st.columns([5, 1])
+# Na Seção 3. BUSCA E ADICIONAR
 with c1:
-    busca = st.selectbox("Busca", options=["(Adicionar...)"] + list(banco_total.keys()), label_visibility="collapsed")
+    # Adicionamos uma key fixa "campo_busca"
+    busca = st.selectbox(
+        "Busca", 
+        options=["(Adicionar...)"] + list(banco_total.keys()), 
+        label_visibility="collapsed",
+        key="campo_busca" 
+    )
 with c2:
-    if st.button("➕"):
+    # Adicionamos uma key "botao_add"
+    if st.button("➕", key="botao_add"):
         if busca and busca != "(Adicionar...)":
             nid = f"{busca}_{len(st.session_state.lista_pacotes)}"
             st.session_state.lista_pacotes.append({"id": nid, "nome": busca})
             st.session_state.ultima_pos = banco_total[busca]
-            salvar_progresso(); st.rerun()
+            salvar_progresso()
+            st.rerun()
 
 # =================================================================
 # 4. PREPARAÇÃO DOS PONTOS
