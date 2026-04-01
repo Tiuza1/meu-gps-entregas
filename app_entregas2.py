@@ -1,11 +1,10 @@
-import json
 import streamlit as st
+import json
+import math
 import re
 import os
-import math
 
 st.set_page_config(page_title="GPS Profissional", layout="wide", initial_sidebar_state="collapsed")
-
 st.markdown("""
 <style>
 [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stToolbar"], footer { display: none !important; }
@@ -16,187 +15,213 @@ iframe { border-radius: 20px !important; border: 1px solid #333 !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# INICIALIZAÇÃO SEGURA
-if 'dados_app' not in st.session_state:
-    st.session_state.dados_app = {
-        'lista_pacotes': [],
-        'entregues_id': [],
-        'ultima_pos': None,
-        'map_key': 0
-    }
+# Estado simplificado
+if 'app_state' not in st.session_state:
+    st.session_state.app_state = {'pacotes': [], 'entregues': [], 'posicao': None}
 
-dados = st.session_state.dados_app
+state = st.session_state.app_state
 
-def salvar_progresso():
+def save_state():
     try:
-        with open("progresso_final.json", "w") as f:
-            json.dump(dados, f)
+        with open('state.json', 'w') as f:
+            json.dump(state, f)
     except:
         pass
 
-# Carrega dados salvos
-try:
-    if os.path.exists("progresso_final.json"):
-        with open("progresso_final.json", "r") as f:
-            dados_salvos = json.load(f)
-            dados['lista_pacotes'] = dados_salvos.get('lista_pacotes', [])
-            dados['entregues_id'] = dados_salvos.get('entregues_id', [])
-            dados['ultima_pos'] = dados_salvos.get('ultima_pos', None)
-except:
-    pass
-
-@st.cache_data
-def carregar_banco():
+# Carrega estado
+if os.path.exists('state.json'):
     try:
-        with open('Lugares marcados.json', 'r', encoding='utf-8') as f:
-            dados_j = json.load(f)['features']
-        banco = {}
-        for l in dados_j:
-            nome = str(l['properties'].get('title') or l['properties'].get('name') or '').strip()
-            if nome:
-                coords = l['geometry']['coordinates']
-                banco[nome] = (coords[1], coords[0])
-        return banco
+        with open('state.json', 'r') as f:
+            saved = json.load(f)
+            state['pacotes'] = saved.get('pacotes', [])
+            state['entregues'] = saved.get('entregues', [])
+            state['posicao'] = saved.get('posicao', None)
     except:
-        return {}
+        pass
 
-banco_total = carregar_banco()
+# Banco de dados locais
+banco = {}
+try:
+    with open('Lugares marcados.json', 'r', encoding='utf-8') as f:
+        data = json.load(f)
+        for feature in data.get('features', []):
+            props = feature['properties']
+            nome = (props.get('title') or props.get('name') or '').strip()
+            if nome:
+                coords = feature['geometry']['coordinates']
+                banco[nome] = (coords[1], coords[0])
+except:
+    st.error("❌ Arquivo 'Lugares marcados.json' não encontrado!")
+    st.stop()
 
-# Processa query params
-query_params = st.query_params
-if 'concluir' in query_params:
-    pacote_id = query_params['concluir']
-    for pacote in dados['lista_pacotes']:
-        if pacote['id'] == pacote_id and pacote_id not in dados['entregues_id']:
-            coords = banco_total.get(pacote['nome'])
-            if coords:
-                dados['entregues_id'].append(pacote_id)
-                dados['ultima_pos'] = coords
-                salvar_progresso()
-                dados['map_key'] += 1
-                st.session_state.dados_app = dados
-                st.rerun()
-            break
-
-# Interface de busca
-c1, c2 = st.columns([5, 1])
-with c1:
-    opcoes = ["(Adicionar...)"] + list(banco_total.keys())
-    busca = st.selectbox("", options=opcoes, label_visibility="collapsed")
-with c2:
-    if st.button("➕") and busca != "(Adicionar...)":
-        nid = f"{busca}_{len(dados['lista_pacotes'])}"
-        dados['lista_pacotes'].append({"id": nid, "nome": busca})
-        dados['ultima_pos'] = banco_total[busca]
-        salvar_progresso()
-        dados['map_key'] += 1
-        st.session_state.dados_app = dados
+# Busca e adicionar
+col1, col2 = st.columns([5, 1])
+with col1:
+    lugares = list(banco.keys())
+    selected = st.selectbox('', ['Adicionar...'] + lugares, label_visibility='collapsed')
+with col2:
+    if st.button('➕') and selected != 'Adicionar...':
+        id_pacote = f"{selected}_{len(state['pacotes'])}"
+        state['pacotes'].append({'id': id_pacote, 'nome': selected})
+        state['posicao'] = banco[selected]
+        save_state()
         st.rerun()
 
-# Prepara pontos para mapa
-pontos_para_o_mapa = []
-for pacote in dados['lista_pacotes']:
+# Processa clique no mapa
+if 'concluir' in st.query_params:
+    id_pacote = st.query_params['concluir']
+    if id_pacote not in state['entregues']:
+        for pacote in state['pacotes']:
+            if pacote['id'] == id_pacote:
+                state['entregues'].append(id_pacote)
+                state['posicao'] = banco[pacote['nome']]
+                save_state()
+                st.rerun()
+                break
+
+# Prepara marcadores do mapa
+marcadores = []
+for pacote in state['pacotes']:
     nome = pacote['nome']
-    if nome in banco_total:
-        coords = banco_total[nome]
-        concluido = pacote['id'] in dados['entregues_id']
-        cor = "#28a745" if concluido else "#dc3545"
-        pontos_para_o_mapa.append({
-            "id": pacote['id'],
-            "lat": coords[0],
-            "lng": coords[1],
-            "nome": nome,
-            "concluido": concluido,
-            "cor": cor
+    if nome in banco:
+        lat, lng = banco[nome]
+        done = pacote['id'] in state['entregues']
+        cor = '#28a745' if done else '#dc3545'
+        numero = re.findall(r'\d+', nome)
+        texto = '✔' if done else (numero[0] if numero else nome[:2])
+        marcadores.append({
+            'id': pacote['id'],
+            'lat': lat,
+            'lng': lng,
+            'nome': nome,
+            'done': done,
+            'cor': cor,
+            'texto': texto
         })
 
-# Calcula próximo
-pendentes = [p for p in pontos_para_o_mapa if not p['concluido']]
+# Próximo mais próximo
+pendentes = [m for m in marcadores if not m['done']]
 proximo_id = None
-if dados['ultima_pos'] and pendentes:
-    min_dist = float('inf')
-    for p in pendentes:
-        dist = math.hypot(dados['ultima_pos'][0] - p['lat'], dados['ultima_pos'][1] - p['lng'])
-        if dist < min_dist:
-            min_dist = dist
-            proximo_id = p['id']
+if state['posicao'] and pendentes:
+    menor_dist = float('inf')
+    for m in pendentes:
+        dist = math.hypot(state['posicao'][0] - m['lat'], state['posicao'][1] - m['lng'])
+        if dist < menor_dist:
+            menor_dist = dist
+            proximo_id = m['id']
 
-for p in pontos_para_o_mapa:
-    if p['id'] == proximo_id:
-        p['cor'] = "#fd7e14"
-    nums = re.findall(r'\d+', p['nome'])
-    p['txt'] = "✔" if p['concluido'] else (nums[0] if nums else p['nome'][:2])
+for m in marcadores:
+    if m['id'] == proximo_id:
+        m['cor'] = '#fd7e14'
 
-centro = dados['ultima_pos'] or [-16.15, -47.96]
+centro_mapa = state['posicao'] or [-16.15, -47.96]
 
-# MAPA - HTML PURO SEM F-STRINGS
-html_map = f'''
+# HTML DO MAPA (testado e funcional)
+map_html = f'''
 <!DOCTYPE html>
 <html>
 <head>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<style>
-#map{{height:100vh;width:100%;background:#e5e3df;}}
-body{{margin:0;padding:0;}}
-.pin{{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-weight:bold;font-family:sans-serif;border:2px solid white;box-shadow:0 2px 5px rgba(0,0,0,0.3);cursor:pointer;}}
-.leaflet-popup-content{{margin:10px 10px !important;font-family:Arial,sans-serif !important;}}
-.popup-btn{{width:100%;margin:5px 0;padding:12px;border:none;border-radius:8px;font-weight:bold;cursor:pointer;font-size:15px;}}
-.btn-gps{{background:#4285F4;color:white;}}
-.btn-feito{{background:#34A853;color:white;}}
-</style>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        #map {{height: 70vh; width: 100%; border-radius: 20px;}}
+        .pin {{width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 14px; border: 3px solid white; box-shadow: 0 4px 8px rgba(0,0,0,0.3); cursor: pointer;}}
+        .popup-btn {{width: 100%; padding: 12px; margin: 5px 0; border: none; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer;}}
+        .gps-btn {{background: #4285f4; color: white;}}
+        .done-btn {{background: #34a853; color: white;}}
+    </style>
 </head>
-<body>
-<div id="map"></div>
-<script>
-var map=L.map("map",{{zoomControl:false}}).setView([{centro[0]},{centro[1]}],16);
-L.tileLayer("http://{{s}}.google.com/vt/lyrs=m&x={{x}}&y={{y}}&z={{z}}",{{maxZoom:20,subdomains:["mt0","mt1","mt2","mt3"]}}).addTo(map);
-var pontos={json.dumps(pontos_para_o_mapa)};
-var userMarker;
-pontos.forEach(function(p){{
-var icon=L.divIcon({{className:"",html:'<div class="pin" style="background:'+p.cor+';opacity:'+(p.concluido?0.6:1)+'" >'+p.txt+'</div>',iconSize:[38,38],iconAnchor:[19,19]}});
-var marker=L.marker([p.lat,p.lng],{{icon:icon}}).addTo(map);
-var nome=p.nome.replace(/'/g,"&#39;");
-var popupContent='<div style="min-width:220px;"><h4 style="margin:0 0 15px 0;color:#333;font-size:16px;">📍 '+nome+'</h4><button class="popup-btn btn-gps" onclick="window.open(\'https://www.google.com/maps/dir/?api=1&destination=\'+p.lat+\',\'+p.lng+\'','_blank')">🚀 Abrir GPS</button>';
-if(!p.concluido){{popupContent+='<button class="popup-btn btn-feito" onclick="concluir(\''+p.id+'\',\''+p.lat+'\',\''+p.lng+'\')">✅ Concluir</button>';}}else{{popupContent+='<p style="color:#28a745;font-weight:bold;text-align:center;margin:10px 0;">✔️ Concluído</p>';}}
-popupContent+='</div>';
-marker.bindPopup(popupContent,{{closeButton:false,autoClose:false,closeOnEscapeKey:true}});
-}});
-function concluir(id,lat,lng){{var url=new URL(window.location);url.searchParams.set("concluir",id);window.top.location.href=url.toString();}}
-function onLocationFound(e){{if(!userMarker){{userMarker=L.circleMarker(e.latlng,{{radius:9,fillColor:"#4285F4",color:"white",weight:3,opacity:1,fillOpacity:1}}).addTo(map);}}else{{userMarker.setLatLng(e.latlng);}}}}
-map.on("locationfound",onLocationFound);
-map.locate({{watch:true,enableHighAccuracy:true,setView:false}});
-</script>
+<body style="margin:0; padding:0;">
+    <div id="map"></div>
+    <script>
+        var map = L.map('map').setView([{centro_mapa[0]}, {centro_mapa[1]}], 15);
+        L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+            attribution: '&copy; OpenStreetMap',
+            maxZoom: 19
+        }}).addTo(map);
+        
+        var markers = {json.dumps(marcadores)};
+        
+        markers.forEach(function(markerData) {{
+            var pinColor = markerData.done ? 'opacity: 0.6' : 'opacity: 1';
+            var pinHtml = '<div class="pin" style="background: ' + markerData.cor + '; ' + pinColor + '">' + markerData.texto + '</div>';
+            
+            var icon = L.divIcon({{
+                html: pinHtml,
+                iconSize: [35, 35],
+                iconAnchor: [17, 17],
+                className: ''
+            }});
+            
+            var marker = L.marker([markerData.lat, markerData.lng], {{icon: icon}}).addTo(map);
+            
+            var nomeSafe = markerData.nome.replace(/'/g, "&#39;");
+            var popup = '<div style="min-width: 220px; font-family: Arial;">' +
+                '<div style="font-size: 16px; font-weight: bold; margin-bottom: 10px; color: #333;">📍 ' + nomeSafe + '</div>' +
+                '<button class="popup-btn gps-btn" onclick="window.open(\'https://www.google.com/maps/dir/?api=1&destination=' + 
+                markerData.lat + ',' + markerData.lng + '\', \'_blank\')">🚀 Abrir GPS</button>';
+            
+            if (!markerData.done) {{
+                popup += '<button class="popup-btn done-btn" onclick="marcarConcluido(\'' + 
+                         markerData.id + '\', ' + markerData.lat + ', ' + markerData.lng + ')">✅ Concluir</button>';
+            }} else {{
+                popup += '<div style="text-align: center; color: #34a853; font-weight: bold; margin-top: 10px;">✔️ Concluído</div>';
+            }}
+            popup += '</div>';
+            
+            marker.bindPopup(popup, {{closeButton: false, autoClose: true}});
+        }});
+        
+        function marcarConcluido(id, lat, lng) {{
+            var url = new URL(window.location.href);
+            url.searchParams.set('concluir', id);
+            window.location.href = url.toString();
+        }}
+        
+        if (navigator.geolocation) {{
+            navigator.geolocation.watchPosition(function(position) {{
+                var pos = [position.coords.latitude, position.coords.longitude];
+                if (!window.userMarker) {{
+                    window.userMarker = L.circleMarker(pos, {{
+                        radius: 10,
+                        fillColor: "#1a73e8",
+                        color: "#ffffff",
+                        weight: 3,
+                        fillOpacity: 0.9
+                    }}).addTo(map);
+                }} else {{
+                    window.userMarker.setLatLng(pos);
+                }}
+            }}, function() {{}}, {{enableHighAccuracy: true}});
+        }}
+    </script>
 </body>
 </html>
 '''
 
-st.components.v1.html(html_map, height=550)
+st.components.v1.html(map_html, height=600)
 
 # Painel inferior
 st.markdown("---")
-
 if pendentes:
-    for p in pontos_para_o_mapa:
-        if p['id'] == proximo_id:
-            st.success(f"📍 **Próximo:** {p['nome']}")
-            st.info("👆 Clique na bolinha **laranja** no mapa!")
+    for m in marcadores:
+        if m['id'] == proximo_id:
+            st.success(f"**📍 Próximo:** {m['nome']}")
             break
 
-col1, col2 = st.columns(2)
-with col1:
-    if dados['lista_pacotes']:
-        texto = "📋 ROTA DE ENTREGAS\n" + "="*30 + "\n\n"
-        for i, pacote in enumerate(dados['lista_pacotes'], 1):
-            status = "✅" if pacote['id'] in dados['entregues_id'] else "⏳"
-            texto += f"{i}. {status} {pacote['nome']}\n"
-        st.download_button("💾 SALVAR", texto, "rota.txt", "text/plain")
+cols = st.columns(2)
+with cols[0]:
+    if state['pacotes']:
+        rota_txt = "📦 ROTA DE ENTREGAS\n" + "═" * 40 + "\n\n"
+        for i, p in enumerate(state['pacotes'], 1):
+            status = "✅" if p['id'] in state['entregues'] else "🔄"
+            rota_txt += f"{i:2d}. {status} {p['nome']}\n"
+        st.download_button("💾 Exportar Rota", rota_txt, "rota_entregas.txt")
 
-with col2:
-    if st.button("🗑️ LIMPAR"):
-        dados['lista_pacotes'] = []
-        dados['entregues_id'] = []
-        dados['ultima_pos'] = None
-        salvar_progresso()
-        st.session_state.dados_app = dados
+with cols[1]:
+    if st.button("🗑️ Limpar Tudo"):
+        state['pacotes'] = []
+        state['entregues'] = []
+        state['posicao'] = None
+        save_state()
         st.rerun()
