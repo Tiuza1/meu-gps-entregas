@@ -116,7 +116,7 @@ for p in pontos_para_o_mapa:
     p['txt'] = "✔" if p['concluido'] else num
 
 # =================================================================
-# 6. O MAPA RÁPIDO (IGUAL AO DAS BOLINHAS VERMELHAS)
+# 6. O MAPA (COM IDENTIFICAÇÃO AO CLICAR)
 # =================================================================
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else [-16.15, -47.96]
 
@@ -142,25 +142,23 @@ mapa_html = f"""
     <script>
         var map = L.map('map', {{ zoomControl: false }}).setView([{centro[0]}, {centro[1]}], 16);
         
-        // Camada do Google Maps
         L.tileLayer('http://{{s}}.google.com/vt/lyrs=m&x={{x}}&y={{y}}&z={{z}}', {{
             maxZoom: 20, subdomains:['mt0','mt1','mt2','mt3']
         }}).addTo(map);
 
         var pontos = {json.dumps(pontos_para_o_mapa)};
-        var userMarker;
-
-        // Desenha APENAS os pontos que você adicionou
+        
         pontos.forEach(function(p) {{
             var icon = L.divIcon({{
                 className: '',
                 html: '<div class="pin" style="background:'+p.cor+'; opacity:'+(p.concluido ? 0.6 : 1)+'">'+p.txt+'</div>',
                 iconSize: [38, 38], iconAnchor: [19, 19]
             }});
-            L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map);
+            // Adiciona um balão com o nome ao clicar na bolinha
+            L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map).bindPopup("<b>" + p.nome + "</b>");
         }});
 
-        // GPS LISO (Igual ao código que você gostou)
+        var userMarker;
         function onLocationFound(e) {{
             if (!userMarker) {{
                 userMarker = L.circleMarker(e.latlng, {{
@@ -177,67 +175,51 @@ mapa_html = f"""
 </html>
 """
 
-st.components.v1.html(mapa_html, height=550)
+st.components.v1.html(mapa_html, height=500)
 
-# Painel de Controle (Abaixo do mapa)
+# =================================================================
+# 7. PAINEL DE CONTROLE (AGORA COM SELEÇÃO MANUAL)
+# =================================================================
 if pendentes:
-    p_atual = next(p for p in pontos_para_o_mapa if p['id'] == proximo_id) if proximo_id else pendentes[0]
-    st.info(f"📍 **Próximo:** {p_atual['nome']}")
-    c_gps, c_ok = st.columns(2)
-    with c_gps:
-        st.link_button("🚀 GPS", f"https://www.google.com/maps/dir/?api=1&destination={p_atual['lat']},{p_atual['lng']}")
-    with c_ok:
-        if st.button("✅ FEITO"):
-            st.session_state.entregues_id.append(p_atual['id'])
-            st.session_state.ultima_pos = [p_atual['lat'], p_atual['lng']]
-            salvar_progresso(); st.rerun()
-
-# --- INÍCIO DO PAINEL DE CONTROLE (ABAIXO DO MAPA) ---
-st.write("---") # Linha divisória
-
-
-# 2. LINHA DE AÇÕES (PRÓXIMO PONTO / GPS / OK)
-if pendentes:
-    p_atual = next(p for p in pontos_para_o_mapa if p['id'] == proximo_id) if proximo_id else pendentes[0]
-    st.info(f"📍 **Próximo:** {p_atual['nome']}")
+    st.markdown("### 🎮 Gerenciar Entrega")
     
+    # Criamos uma lista de nomes dos pontos que ainda faltam
+    dict_pendentes = {p['nome']: p for p in pendentes}
+    nomes_pendentes = list(dict_pendentes.keys())
+    
+    # Define qual ponto sugerir (o mais próximo/laranja)
+    sugerido = next((p for p in pendentes if p['id'] == proximo_id), pendentes[0])
+    idx_sugerido = nomes_pendentes.index(sugerido['nome'])
+
+    # O SEGREDO ESTÁ AQUI: Você seleciona o ponto que clicou no mapa
+    escolha = st.selectbox("Selecione o ponto que você clicou no mapa:", 
+                            options=nomes_pendentes, 
+                            index=idx_sugerido)
+    
+    p_alvo = dict_pendentes[escolha]
+
     col_gps, col_ok = st.columns(2)
     with col_gps:
-        st.link_button("🚀 ABRIR GPS", f"https://www.google.com/maps/dir/?api=1&destination={p_atual['lat']},{p_atual['lng']}", use_container_width=True)
+        st.link_button(f"🚀 GPS: {p_alvo['txt']}", f"https://www.google.com/maps/dir/?api=1&destination={p_alvo['lat']},{p_alvo['lng']}", use_container_width=True)
     with col_ok:
-        if st.button("✅ CONCLUIR", use_container_width=True, type="primary"):
-            st.session_state.entregues_id.append(p_atual['id'])
-            st.session_state.ultima_pos = [p_atual['lat'], p_atual['lng']]
+        if st.button(f"✅ CONCLUIR {p_alvo['txt']}", use_container_width=True, type="primary"):
+            st.session_state.entregues_id.append(p_alvo['id'])
+            st.session_state.ultima_pos = [p_alvo['lat'], p_alvo['lng']]
             salvar_progresso(); st.rerun()
 
 st.write("---")
 
-# 3. LINHA DE GERENCIAMENTO (SALVAR E LIMPAR)
-col_save, col_clear = st.columns(2)
-
-with col_save:
-    # AÇÃO: SALVAR ROTA .TXT
+# Ações de rodapé
+c_save, c_clear = st.columns(2)
+with c_save:
     if st.session_state.lista_pacotes:
-        texto_rota = "📋 ROTA DE ENTREGAS\n" + "="*25 + "\n"
+        rota_txt = "📋 ROTA DE ENTREGAS\n" + "="*20 + "\n"
         for i, p in enumerate(st.session_state.lista_pacotes, 1):
             status = "✅" if p['id'] in st.session_state.entregues_id else "❌"
-            texto_rota += f"{i}. {status} {p['nome']}\n"
-        
-        st.download_button(
-            label="💾 SALVAR TXT",
-            data=texto_rota,
-            file_name="minha_rota.txt",
-            mime="text/plain",
-            use_container_width=True
-        )
-    else:
-        st.button("💾 SALVAR TXT", disabled=True, use_container_width=True)
+            rota_txt += f"{i}. {status} {p['nome']}\n"
+        st.download_button("💾 SALVAR TXT", rota_txt, file_name="minha_rota.txt", use_container_width=True)
 
-with col_clear:
-    # AÇÃO: LIMPAR TUDO
-    if st.button("🗑️ LIMPAR MAPA", use_container_width=True, help="Apaga todos os dados"):
+with c_clear:
+    if st.button("🗑️ LIMPAR MAPA", use_container_width=True):
         if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
-        st.session_state.lista_pacotes = []
-        st.session_state.entregues_id = []
-        st.session_state.ultima_pos = None
-        st.rerun()
+        st.session_state.lista_pacotes = []; st.session_state.entregues_id = []; st.session_state.ultima_pos = None; st.rerun()
