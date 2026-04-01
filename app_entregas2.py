@@ -12,18 +12,9 @@ st.set_page_config(page_title="GPS Profissional", layout="wide", initial_sidebar
 st.markdown("""
     <style>
     [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stToolbar"], footer { display: none !important; }
-    .block-container { padding: 0.5rem !important; max-width: 100% !important; }
-    .stButton>button { border-radius: 12px !important; height: 50px !important; font-weight: bold !important; }
-    iframe { border-radius: 20px !important; border: 1px solid #333 !important; margin-bottom: 10px !important; }
-    
-    /* Estilo do Painel de Ação Inferior */
-    .action-panel {
-        background-color: #1E1E26;
-        padding: 15px;
-        border-radius: 15px;
-        border: 1px solid #333;
-        margin-top: 10px;
-    }
+    .block-container { padding: 0rem !important; max-width: 100% !important; }
+    iframe { border: none !important; }
+    .stButton>button { border-radius: 10px !important; height: 45px !important; font-weight: bold !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -37,11 +28,7 @@ if 'entregues_id' not in st.session_state: st.session_state.entregues_id = []
 if 'ultima_pos' not in st.session_state: st.session_state.ultima_pos = None
 
 def salvar_progresso():
-    dados = {
-        "lista_pacotes": st.session_state.lista_pacotes, 
-        "entregues_id": st.session_state.entregues_id, 
-        "ultima_pos": st.session_state.ultima_pos
-    }
+    dados = {"lista_pacotes": st.session_state.lista_pacotes, "entregues_id": st.session_state.entregues_id, "ultima_pos": st.session_state.ultima_pos}
     with open(FILE_SAVE, "w") as f: json.dump(dados, f)
 
 if not st.session_state.lista_pacotes and os.path.exists(FILE_SAVE):
@@ -65,36 +52,46 @@ def carregar_banco():
 
 banco_total = carregar_banco()
 
-# =================================================================
-# 3. BUSCA E ADICIONAR
-# =================================================================
-c1, c2 = st.columns([5, 1])
-with c1:
-    busca = st.selectbox("Busca", options=["(Adicionar...)"] + list(banco_total.keys()), label_visibility="collapsed", key="search")
-with c2:
-    if st.button("➕", key="add_btn"):
-        if busca and busca != "(Adicionar...)":
-            nid = f"P_{len(st.session_state.lista_pacotes)}_{int(math.fmod(math.pow(len(st.session_state.lista_pacotes),2),100))}"
-            st.session_state.lista_pacotes.append({"id": nid, "nome": busca})
-            st.session_state.ultima_pos = banco_total[busca]
-            salvar_progresso()
-            st.rerun()
+# Processar ação de conclusão via URL
+query_params = st.query_params
+if "concluir" in query_params:
+    id_para_concluir = query_params["concluir"]
+    if id_para_concluir not in st.session_state.entregues_id:
+        st.session_state.entregues_id.append(id_para_concluir)
+        for p in st.session_state.lista_pacotes:
+            if p['id'] == id_para_concluir:
+                coords = banco_total.get(p['nome'])
+                if coords: st.session_state.ultima_pos = coords
+        salvar_progresso()
+    st.query_params.clear()
+    st.rerun()
 
 # =================================================================
-# 4. PREPARAÇÃO DO MAPA
+# 3. BUSCA E PONTOS
 # =================================================================
+# Container de busca superior
+with st.container():
+    c1, c2 = st.columns([5, 1])
+    with c1:
+        busca = st.selectbox("Busca", options=["(Adicionar...)"] + list(banco_total.keys()), label_visibility="collapsed")
+    with c2:
+        if st.button("➕"):
+            if busca and busca != "(Adicionar...)":
+                nid = f"{busca}_{len(st.session_state.lista_pacotes)}"
+                st.session_state.lista_pacotes.append({"id": nid, "nome": busca})
+                st.session_state.ultima_pos = banco_total[busca]
+                salvar_progresso(); st.rerun()
+
 pontos_para_o_mapa = []
-pendentes = []
+proximo_id = None
 
 for p in st.session_state.lista_pacotes:
     coords = banco_total.get(p['nome'], (0,0))
     concluido = p['id'] in st.session_state.entregues_id
-    item = {"id": p['id'], "lat": coords[0], "lng": coords[1], "nome": p['nome'], "concluido": concluido}
-    pontos_para_o_mapa.append(item)
-    if not concluido: pendentes.append(item)
+    cor = "#28a745" if concluido else "#dc3545"
+    pontos_para_o_mapa.append({"id": p['id'], "lat": coords[0], "lng": coords[1], "nome": p['nome'], "concluido": concluido, "cor": cor})
 
-# Lógica de proximidade para cor Laranja
-proximo_id = None
+pendentes = [p for p in pontos_para_o_mapa if not p['concluido']]
 if st.session_state.ultima_pos and pendentes:
     m_dist = float('inf')
     for p in pendentes:
@@ -104,109 +101,144 @@ if st.session_state.ultima_pos and pendentes:
             proximo_id = p['id']
 
 for p in pontos_para_o_mapa:
-    if p['concluido']: p['cor'] = "#28a745"
-    elif p['id'] == proximo_id: p['cor'] = "#fd7e14"
-    else: p['cor'] = "#dc3545"
-    
+    if p['id'] == proximo_id: p['cor'] = "#fd7e14"
     num = re.findall(r'\d+', p['nome'])[0] if re.findall(r'\d+', p['nome']) else p['nome'][:2]
     p['txt'] = "✔" if p['concluido'] else num
 
+# =================================================================
+# 4. MAPA COM MENU FIXO EMBAIXO
+# =================================================================
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else [-16.15, -47.96]
 
-# Gerar HTML do Mapa (Sem Popups internos)
 mapa_html = f"""
 <!DOCTYPE html>
 <html>
 <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        #map {{ height: 100vh; width: 100%; background: #222; }}
-        body {{ margin: 0; padding: 0; }}
+        #map {{ height: 100vh; width: 100%; z-index: 1; }}
+        body {{ margin: 0; padding: 0; font-family: sans-serif; overflow: hidden; }}
+        
         .pin {{
             width: 38px; height: 38px; border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
-            color: white; font-weight: bold; font-family: sans-serif;
-            border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            color: white; font-weight: bold; border: 2px solid white; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
         }}
+
+        /* Painel Fixo Inferior */
+        #bottom-menu {{
+            position: fixed; bottom: -200px; left: 0; right: 0;
+            background: white; z-index: 1000;
+            padding: 20px; border-top-left-radius: 20px; border-top-right-radius: 20px;
+            box-shadow: 0 -5px 15px rgba(0,0,0,0.2);
+            transition: bottom 0.3s ease-out;
+        }}
+        #bottom-menu.active {{ bottom: 0; }}
+        
+        .menu-title {{ font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #333; }}
+        .btn-group {{ display: flex; gap: 10px; }}
+        .btn {{
+            flex: 1; text-align: center; padding: 12px; border-radius: 10px;
+            text-decoration: none; color: white; font-weight: bold; font-size: 14px;
+        }}
+        .btn-gps {{ background: #4285F4; }}
+        .btn-check {{ background: #28a745; }}
+        .btn-close {{ background: #eee; color: #666; margin-top: 10px; display: block; }}
     </style>
 </head>
 <body>
     <div id="map"></div>
+
+    <div id="bottom-menu">
+        <div id="m-nome" class="menu-title">Selecione um local</div>
+        <div class="btn-group">
+            <a id="lnk-gps" href="#" target="_blank" class="btn btn-gps">🚀 ABRIR GPS</a>
+            <a id="lnk-concluir" href="#" target="_self" class="btn btn-check">✅ CONCLUIR</a>
+        </div>
+        <a href="javascript:void(0)" onclick="closeMenu()" class="btn btn-close">FECHAR</a>
+    </div>
+
     <script>
         var map = L.map('map', {{ zoomControl: false }}).setView([{centro[0]}, {centro[1]}], 16);
-        L.tileLayer('http://{{s}}.google.com/vt/lyrs=m&x={{x}}&y={{y}}&z={{z}}', {{ subdomains:['mt0','mt1','mt2','mt3'] }}).addTo(map);
+        
+        L.tileLayer('http://{{s}}.google.com/vt/lyrs=m&x={{x}}&y={{y}}&z={{z}}', {{
+            maxZoom: 20, subdomains:['mt0','mt1','mt2','mt3']
+        }}).addTo(map);
 
         var pontos = {json.dumps(pontos_para_o_mapa)};
+        var menu = document.getElementById('bottom-menu');
+        
+        function closeMenu() {{ menu.classList.remove('active'); }}
+
         pontos.forEach(function(p) {{
             var icon = L.divIcon({{
                 className: '',
                 html: '<div class="pin" style="background:'+p.cor+'; opacity:'+(p.concluido ? 0.6 : 1)+'">'+p.txt+'</div>',
                 iconSize: [38, 38], iconAnchor: [19, 19]
             }});
+
             var marker = L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map);
             
-            // AO CLICAR: Atualiza a URL do navegador principal
             marker.on('click', function() {{
-                window.top.location.href = '?selecionado=' + p.id;
+                document.getElementById('m-nome').innerText = p.nome;
+                document.getElementById('lnk-gps').href = 'https://www.google.com/maps/dir/?api=1&destination='+p.lat+','+p.lng;
+                
+                var btnConcluir = document.getElementById('lnk-concluir');
+                if (p.concluido) {{
+                    btnConcluir.style.display = 'none';
+                }} else {{
+                    btnConcluir.style.display = 'block';
+                    btnConcluir.href = '?concluir=' + p.id;
+                }}
+                
+                menu.classList.add('active');
+                map.panTo([p.lat, p.lng]);
             }});
         }});
+
+        map.on('click', function() {{ closeMenu(); }});
+
+        // GPS DO USUÁRIO
+        var userMarker;
+        map.on('locationfound', function(e) {{
+            if (!userMarker) {{
+                userMarker = L.circleMarker(e.latlng, {{
+                    radius: 9, fillColor: "#4285F4", color: "white", weight: 3, opacity: 1, fillOpacity: 1
+                }}).addTo(map);
+            }} else {{
+                userMarker.setLatLng(e.latlng);
+            }}
+        }});
+        map.locate({{ watch: true, enableHighAccuracy: true }});
     </script>
 </body>
 </html>
 """
 
-st.components.v1.html(mapa_html, height=450)
+st.components.v1.html(mapa_html, height=600)
 
 # =================================================================
-# 5. PAINEL DE AÇÃO FIXO (O "POPUP" DE BAIXO)
+# 5. RODAPÉ (GERENCIAMENTO)
 # =================================================================
-id_selecionado = st.query_params.get("selecionado")
+col_save, col_clear = st.columns(2)
 
-if id_selecionado:
-    # Encontrar os dados do ponto clicado
-    ponto_atual = next((p for p in pontos_para_o_mapa if p['id'] == id_selecionado), None)
-    
-    if ponto_atual:
-        with st.container():
-            st.markdown(f"""
-                <div class="action-panel">
-                    <div style="color:white; font-size:18px; font-weight:bold; margin-bottom:10px;">
-                        📍 {ponto_atual['nome']}
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            col_gps, col_done = st.columns(2)
-            
-            with col_gps:
-                link_gps = f"https://www.google.com/maps/dir/?api=1&destination={ponto_atual['lat']},{ponto_atual['lng']}"
-                st.link_button("🚀 ABRIR GPS", link_gps, use_container_width=True)
-            
-            with col_done:
-                if not ponto_atual['concluido']:
-                    if st.button("✅ CONCLUIR", type="primary", use_container_width=True):
-                        st.session_state.entregues_id.append(ponto_atual['id'])
-                        st.session_state.ultima_pos = (ponto_atual['lat'], ponto_atual['lng'])
-                        salvar_progresso()
-                        # Limpa seleção e recarrega
-                        st.query_params.clear()
-                        st.rerun()
-                else:
-                    st.button("✔ ENTREGUE", disabled=True, use_container_width=True)
-            
-            if st.button("✖ FECHAR PAINEL", use_container_width=True):
-                st.query_params.clear()
-                st.rerun()
+with col_save:
+    if st.session_state.lista_pacotes:
+        texto_rota = "📋 ROTA DE ENTREGAS\n" + "="*25 + "\n"
+        for i, p in enumerate(st.session_state.lista_pacotes, 1):
+            status = "✅" if p['id'] in st.session_state.entregues_id else "❌"
+            texto_rota += f"{i}. {status} {p['nome']}\n"
+        st.download_button("💾 SALVAR TXT", data=texto_rota, file_name="minha_rota.txt", use_container_width=True)
+    else:
+        st.button("💾 SALVAR TXT", disabled=True, use_container_width=True)
 
-# =================================================================
-# 6. RODAPÉ (GERENCIAMENTO)
-# =================================================================
-st.write("---")
-if st.button("🗑️ LIMPAR TODA A ROTA", use_container_width=True):
-    if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
-    st.session_state.lista_pacotes = []
-    st.session_state.entregues_id = []
-    st.session_state.ultima_pos = None
-    st.query_params.clear()
-    st.rerun()
+with col_clear:
+    if st.button("🗑️ LIMPAR TUDO", use_container_width=True):
+        if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
+        st.session_state.lista_pacotes = []
+        st.session_state.entregues_id = []
+        st.session_state.ultima_pos = None
+        st.rerun()
