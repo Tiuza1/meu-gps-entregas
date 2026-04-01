@@ -89,38 +89,41 @@ banco_total = carregar_banco()
 # 3. MENU LATERAL (AÇÕES)
 # =================================================================
 with st.sidebar:
-    st.title("⚙️ Configurações")
-    
-    # --- AÇÃO 1: SALVAR ROTA ---
-    st.subheader("💾 Exportar")
+    st.markdown("### 🛠️ Gerenciar Rota")
+    st.write("---")
+
+    # --- AÇÃO 1: SALVAR ROTA EM .TXT ---
     if st.session_state.lista_pacotes:
-        # Criar texto da rota
-        texto_rota = "ROTA DE ENTREGAS\n" + "-"*20 + "\n"
-        for p in st.session_state.lista_pacotes:
-            status = "OK" if p['id'] in st.session_state.entregues_id else "PENDENTE"
-            texto_rota += f"{status} - {p['nome']}\n"
-            
+        # Criar o conteúdo do texto
+        conteudo = "📋 MINHA ROTA DE ENTREGAS\n"
+        conteudo += "="*30 + "\n"
+        for i, p in enumerate(st.session_state.lista_pacotes, 1):
+            status = "[OK]" if p['id'] in st.session_state.entregues_id else "[ ]"
+            conteudo += f"{i}. {status} {p['nome']}\n"
+        
         st.download_button(
-            label="Baixar Rota (.txt)",
-            data=texto_rota,
-            file_name="rota_gps.txt",
+            label="💾 SALVAR ROTA (.txt)",
+            data=conteudo,
+            file_name="rota_entregas.txt",
             mime="text/plain",
             use_container_width=True
         )
     else:
         st.info("Adicione locais para salvar.")
 
-    st.markdown("---")
+    st.write("") # Espaço
 
-    # --- AÇÃO 2: LIMPAR MAPA ---
-    st.subheader("🗑️ Perigo")
-    if st.button("LIMPAR TUDO", use_container_width=True, help="Apaga todos os pontos"):
+    # --- AÇÃO 2: LIMPAR TUDO ---
+    if st.button("🗑️ LIMPAR MAPA", use_container_width=True):
         if os.path.exists(FILE_SAVE):
             os.remove(FILE_SAVE)
         st.session_state.lista_pacotes = []
         st.session_state.entregues_id = []
         st.session_state.ultima_pos = None
+        st.toast("Tudo limpo!")
         st.rerun()
+
+    st.write("---")
 
 # =================================================================
 # 4. BUSCA E ADICIONAR
