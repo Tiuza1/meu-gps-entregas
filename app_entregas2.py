@@ -24,7 +24,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =================================================================
-# 2. MEMÓRIA DO SISTEMA
+# 2. MEMÓRIA E PROCESSAMENTO (Mova para cá, logo após os imports)
 # =================================================================
 FILE_SAVE = "progresso_final.json"
 
@@ -32,75 +32,40 @@ if 'lista_pacotes' not in st.session_state: st.session_state.lista_pacotes = []
 if 'entregues_id' not in st.session_state: st.session_state.entregues_id = []
 if 'ultima_pos' not in st.session_state: st.session_state.ultima_pos = None
 
-def salvar_progresso():
-    dados = {"lista_pacotes": st.session_state.lista_pacotes, "entregues_id": st.session_state.entregues_id, "ultima_pos": st.session_state.ultima_pos}
-    with open(FILE_SAVE, "w") as f: json.dump(dados, f)
+# --- LÓGICA DE CONCLUIR (DEVE VIR ANTES DE TUDO) ---
+qp = st.query_params
+if "concluir" in qp:
+    id_alvo = qp["concluir"]
+    if id_alvo not in st.session_state.entregues_id:
+        st.session_state.entregues_id.append(id_alvo)
+        # Salva e limpa a URL IMEDIATAMENTE
+        st.query_params.clear()
+        st.rerun() # Interrompe o código aqui e recomeça limpo
 
-if not st.session_state.lista_pacotes and os.path.exists(FILE_SAVE):
-    try:
-        with open(FILE_SAVE, "r") as f:
-            d = json.load(f)
-            st.session_state.lista_pacotes = d.get("lista_pacotes", [])
-            st.session_state.entregues_id = d.get("entregues_id", [])
-            st.session_state.ultima_pos = d.get("ultima_pos")
-    except: pass
-
-@st.cache_data
-def carregar_banco():
-    try:
-        with open('Lugares marcados.json', 'r', encoding='utf-8') as f:
-            dados_j = json.load(f)
-        return {str(l['properties'].get('title') or l['properties'].get('name')).strip(): 
-                (l['geometry']['coordinates'][1], l['geometry']['coordinates'][0]) 
-                for l in dados_j.get('features',[])}
-    except: return {}
-
-banco_total = carregar_banco()
-
-# --- LÓGICA PARA PROCESSAR AÇÃO DO POPUP ---
-# Você precisa desta linha abaixo para o código saber o que é 'query_params'
-query_params = st.query_params 
-
-if "concluir" in query_params:
-    id_para_concluir = query_params["concluir"]
-    if id_para_concluir not in st.session_state.entregues_id:
-        st.session_state.entregues_id.append(id_para_concluir)
-        # Atualiza a última posição para o local que acabou de ser entregue
-        for p in st.session_state.lista_pacotes:
-            if p['id'] == id_para_concluir:
-                coords = banco_total.get(p['nome'])
-                if coords: st.session_state.ultima_pos = coords
-        salvar_progresso()
-    
-    # Limpa a URL e recarrega para evitar o loop e a duplicação de menus
-    st.query_params.clear()
-    st.rerun()
+# ... (mantenha a função carregar_banco e salvar_progresso aqui)
 
 # =================================================================
-# 3. BUSCA E ADICIONAR
+# 3. ÁREA DE BUSCA (COM CONTAINER PARA EVITAR DUPLICAÇÃO)
 # =================================================================
-# ESTA LINHA ABAIXO É OBRIGATÓRIA (ela cria o c1 e o c2)
-c1, c2 = st.columns([5, 1]) 
+menu_container = st.container() # Cria um espaço isolado
 
-with c1:
-    # Adicionamos a 'key' para evitar aquela repetição de menus
-    busca = st.selectbox(
-        "Busca", 
-        options=["(Adicionar...)"] + list(banco_total.keys()), 
-        label_visibility="collapsed",
-        key="campo_busca_principal"
-    )
-
-with c2:
-    # Adicionamos a 'key' aqui também
-    if st.button("➕", key="botao_adicionar_entrega"):
-        if busca and busca != "(Adicionar...)":
-            nid = f"{busca}_{len(st.session_state.lista_pacotes)}"
-            st.session_state.lista_pacotes.append({"id": nid, "nome": busca})
-            st.session_state.ultima_pos = banco_total[busca]
-            salvar_progresso()
-            st.rerun()
-
+with menu_container:
+    c1, c2 = st.columns([5, 1])
+    with c1:
+        # A chave (key) com um timestamp ou ID fixo evita o "fantasma"
+        busca = st.selectbox(
+            "Busca", 
+            options=["(Adicionar...)"] + list(banco_total.keys()), 
+            label_visibility="collapsed",
+            key="busca_unica" 
+        )
+    with c2:
+        if st.button("➕", key="btn_add_unico"):
+            if busca and busca != "(Adicionar...)":
+                nid = f"{busca}_{len(st.session_state.lista_pacotes)}"
+                st.session_state.lista_pacotes.append({"id": nid, "nome": busca})
+                st.session_state.ultima_pos = banco_total[busca]
+                st.rerun()
 # =================================================================
 # 4. PREPARAÇÃO DOS PONTOS
 # =================================================================
