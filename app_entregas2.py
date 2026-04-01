@@ -69,66 +69,29 @@ def carregar_banco():
 
 banco_total = carregar_banco()
 
-# --- INÍCIO DO PAINEL DE CONTROLE (ABAIXO DO MAPA) ---
-st.write("---") # Linha divisória
+# =================================================================
+# 3. MENU LATERAL (CONFIGURAÇÕES)
+# =================================================================
+with st.sidebar:
+    st.header("⚙️ Opções")
+    if st.button("🗑️ LIMPAR TUDO"):
+        if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
+        st.session_state.lista_pacotes = []; st.session_state.entregues_id = []; st.session_state.ultima_pos = None
+        st.rerun()
 
-# 1. LINHA DE BUSCA E ADICIONAR
-c1, c2 = st.columns([4, 1])
+# =================================================================
+# 4. BUSCA E ADICIONAR
+# =================================================================
+c1, c2 = st.columns([5, 1])
 with c1:
-    busca = st.selectbox("Adicionar quadra:", options=["(Selecione...)"] + list(banco_total.keys()), label_visibility="collapsed")
+    busca = st.selectbox("Busca", options=["(Adicionar...)"] + list(banco_total.keys()), label_visibility="collapsed")
 with c2:
-    if st.button("➕", use_container_width=True):
-        if busca and busca != "(Selecione...)":
+    if st.button("➕"):
+        if busca and busca != "(Adicionar...)":
             nid = f"{busca}_{len(st.session_state.lista_pacotes)}"
             st.session_state.lista_pacotes.append({"id": nid, "nome": busca})
             st.session_state.ultima_pos = banco_total[busca]
             salvar_progresso(); st.rerun()
-
-# 2. LINHA DE AÇÕES (PRÓXIMO PONTO / GPS / OK)
-if pendentes:
-    p_atual = next(p for p in pontos_para_o_mapa if p['id'] == proximo_id) if proximo_id else pendentes[0]
-    st.info(f"📍 **Próximo:** {p_atual['nome']}")
-    
-    col_gps, col_ok = st.columns(2)
-    with col_gps:
-        st.link_button("🚀 ABRIR GPS", f"https://www.google.com/maps/dir/?api=1&destination={p_atual['lat']},{p_atual['lng']}", use_container_width=True)
-    with col_ok:
-        if st.button("✅ CONCLUIR", use_container_width=True, type="primary"):
-            st.session_state.entregues_id.append(p_atual['id'])
-            st.session_state.ultima_pos = [p_atual['lat'], p_atual['lng']]
-            salvar_progresso(); st.rerun()
-
-st.write("---")
-
-# 3. LINHA DE GERENCIAMENTO (SALVAR E LIMPAR)
-col_save, col_clear = st.columns(2)
-
-with col_save:
-    # AÇÃO: SALVAR ROTA .TXT
-    if st.session_state.lista_pacotes:
-        texto_rota = "📋 ROTA DE ENTREGAS\n" + "="*25 + "\n"
-        for i, p in enumerate(st.session_state.lista_pacotes, 1):
-            status = "✅" if p['id'] in st.session_state.entregues_id else "❌"
-            texto_rota += f"{i}. {status} {p['nome']}\n"
-        
-        st.download_button(
-            label="💾 SALVAR TXT",
-            data=texto_rota,
-            file_name="minha_rota.txt",
-            mime="text/plain",
-            use_container_width=True
-        )
-    else:
-        st.button("💾 SALVAR TXT", disabled=True, use_container_width=True)
-
-with col_clear:
-    # AÇÃO: LIMPAR TUDO
-    if st.button("🗑️ LIMPAR MAPA", use_container_width=True, help="Apaga todos os dados"):
-        if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
-        st.session_state.lista_pacotes = []
-        st.session_state.entregues_id = []
-        st.session_state.ultima_pos = None
-        st.rerun()
 
 # =================================================================
 # 5. LÓGICA DE QUAIS PONTOS MOSTRAR (VISUAL LIMPO)
