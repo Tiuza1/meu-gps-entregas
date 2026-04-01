@@ -7,43 +7,34 @@ import math
 # =================================================================
 # 1. CONFIGURAÇÃO E MENU ESCURO (IGUAL VOCÊ PEDIU)
 # =================================================================
+st.set_page_config(page_title="GPS Profissional", layout="wide", initial_sidebar_state="collapsed")
+
 st.markdown("""
     <style>
-    /* 1. MOVE O MENU LATERAL PARA A DIREITA */
-    [data-testid="stSidebar"] {
-        right: 0;
-        left: auto !important;
-        border-left: 1px solid #333;
-    }
-    [data-testid="stSidebarNav"] { display: none; } /* Esconde lixo do menu */
+    /* ESCONDE O HEADER E O MENU LATERAL */
+    [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stToolbar"], footer { display: none !important; }
 
-    /* 2. POSICIONA O BOTÃO DE ABRIR NO CANTO SUPERIOR DIREITO */
-    [data-testid="stSidebarCollapsedControl"] {
-        background-color: #1E1E1E !important;
-        color: white !important;
+    /* AJUSTA O ESPAÇAMENTO DA TELA */
+    .block-container { 
+        padding: 0.5rem !important; 
+        max-width: 100% !important;
+    }
+
+    /* ESTILO DOS BOTÕES LADO A LADO */
+    .stButton>button {
         border-radius: 10px !important;
-        width: 45px !important;
         height: 45px !important;
-        top: 10px !important;
-        right: 10px !important; /* Move para a direita */
-        left: auto !important;
-        position: fixed !important;
-        z-index: 1000000 !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        box-shadow: 0px 4px 15px rgba(0,0,0,0.6) !important;
-        border: 1px solid #444 !important;
+        font-weight: bold !important;
     }
-
-    /* 3. DEIXA O TOPO TRANSPARENTE */
-    [data-testid="stHeader"] { background: rgba(0,0,0,0) !important; height: 0px !important; }
     
-    /* Ajusta o mapa para ocupar a tela toda */
-    .block-container { padding: 0rem !important; }
-    [data-testid="stToolbar"], footer { display: none !important; }
+    /* ESTILO DA BARRA DE BUSCA */
+    .stSelectbox { margin-bottom: -15px !important; }
+
+    /* DEIXA O MAPA COM BORDAS ARREDONDADAS */
+    iframe { border-radius: 20px !important; border: 1px solid #333 !important; }
     </style>
 """, unsafe_allow_html=True)
+
 # =================================================================
 # 2. MEMÓRIA DO SISTEMA
 # =================================================================
@@ -78,62 +69,66 @@ def carregar_banco():
 
 banco_total = carregar_banco()
 
-# =================================================================
-# 3. MENU LATERAL DIREITO (GERENCIAMENTO COMPLETO)
-# =================================================================
-with st.sidebar:
-    st.title("📍 Gerenciar Rota")
-    st.write("---")
+# --- INÍCIO DO PAINEL DE CONTROLE (ABAIXO DO MAPA) ---
+st.write("---") # Linha divisória
 
-    # --- ADICIONAR QUADRAS (AGORA DENTRO DO MENU) ---
-    st.subheader("➕ Adicionar Local")
-    busca = st.selectbox("Selecione a Quadra", 
-                         options=["(Escolha...)"] + list(banco_total.keys()), 
-                         label_visibility="collapsed")
-    
-    if st.button("ADICIONAR À LISTA", use_container_width=True):
-        if busca and busca != "(Escolha...)":
+# 1. LINHA DE BUSCA E ADICIONAR
+c1, c2 = st.columns([4, 1])
+with c1:
+    busca = st.selectbox("Adicionar quadra:", options=["(Selecione...)"] + list(banco_total.keys()), label_visibility="collapsed")
+with c2:
+    if st.button("➕", use_container_width=True):
+        if busca and busca != "(Selecione...)":
             nid = f"{busca}_{len(st.session_state.lista_pacotes)}"
             st.session_state.lista_pacotes.append({"id": nid, "nome": busca})
             st.session_state.ultima_pos = banco_total[busca]
-            salvar_progresso()
-            st.rerun()
+            salvar_progresso(); st.rerun()
 
-    st.write("---")
+# 2. LINHA DE AÇÕES (PRÓXIMO PONTO / GPS / OK)
+if pendentes:
+    p_atual = next(p for p in pontos_para_o_mapa if p['id'] == proximo_id) if proximo_id else pendentes[0]
+    st.info(f"📍 **Próximo:** {p_atual['nome']}")
+    
+    col_gps, col_ok = st.columns(2)
+    with col_gps:
+        st.link_button("🚀 ABRIR GPS", f"https://www.google.com/maps/dir/?api=1&destination={p_atual['lat']},{p_atual['lng']}", use_container_width=True)
+    with col_ok:
+        if st.button("✅ CONCLUIR", use_container_width=True, type="primary"):
+            st.session_state.entregues_id.append(p_atual['id'])
+            st.session_state.ultima_pos = [p_atual['lat'], p_atual['lng']]
+            salvar_progresso(); st.rerun()
 
-    # --- SALVAR ROTA ---
-    st.subheader("💾 Exportar")
+st.write("---")
+
+# 3. LINHA DE GERENCIAMENTO (SALVAR E LIMPAR)
+col_save, col_clear = st.columns(2)
+
+with col_save:
+    # AÇÃO: SALVAR ROTA .TXT
     if st.session_state.lista_pacotes:
-        texto_rota = "ROTA DE ENTREGAS\n" + "="*25 + "\n"
+        texto_rota = "📋 ROTA DE ENTREGAS\n" + "="*25 + "\n"
         for i, p in enumerate(st.session_state.lista_pacotes, 1):
-            status = "[OK]" if p['id'] in st.session_state.entregues_id else "[ ]"
+            status = "✅" if p['id'] in st.session_state.entregues_id else "❌"
             texto_rota += f"{i}. {status} {p['nome']}\n"
         
         st.download_button(
-            label="BAIXAR ROTA (.txt)",
+            label="💾 SALVAR TXT",
             data=texto_rota,
             file_name="minha_rota.txt",
             mime="text/plain",
             use_container_width=True
         )
-    
-    st.write("")
+    else:
+        st.button("💾 SALVAR TXT", disabled=True, use_container_width=True)
 
-    # --- LIMPAR TUDO ---
-    if st.button("🗑️ LIMPAR MAPA", use_container_width=True, type="secondary"):
+with col_clear:
+    # AÇÃO: LIMPAR TUDO
+    if st.button("🗑️ LIMPAR MAPA", use_container_width=True, help="Apaga todos os dados"):
         if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
         st.session_state.lista_pacotes = []
         st.session_state.entregues_id = []
         st.session_state.ultima_pos = None
         st.rerun()
-
-    st.write("---")
-    # Lista rápida de itens já adicionados para conferência
-    if st.session_state.lista_pacotes:
-        st.caption("Itens na fila:")
-        for p in st.session_state.lista_pacotes[-5:]: # Mostra os últimos 5
-            st.text(f"• {p['nome']}")
-
 
 # =================================================================
 # 5. LÓGICA DE QUAIS PONTOS MOSTRAR (VISUAL LIMPO)
