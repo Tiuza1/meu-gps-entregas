@@ -5,39 +5,52 @@ import os
 import math
 
 # =================================================================
-# 1. CONFIGURAÇÃO DE TELA CHEIA TOTAL (ELIMINA BARRAS PRETAS)
+# 1. CONFIGURAÇÃO DE TELA CHEIA TOTAL (SEM BORDAS BRANCAS)
 # =================================================================
 st.set_page_config(page_title="GPS Profissional", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
     <style>
-    /* 1. Esconde Header, Footer e Toolbar */
+    /* 1. Esconde absolutamente tudo que não é o conteúdo */
     [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stToolbar"], footer { display: none !important; }
     
-    /* 2. Remove todos os paddings do container principal */
+    /* 2. Reseta o container principal para margem ZERO */
     .main .block-container {
-        padding: 0rem !important;
+        padding: 0px !important;
+        margin: 0px !important;
         max-width: 100% !important;
-        margin-top: -20px !important; /* Puxa o conteúdo para cima */
-    }
-
-    /* 3. Ajusta o fundo para não parecer que há cortes */
-    [data-testid="stAppViewContainer"] {
-        background-color: white !important;
-    }
-
-    /* 4. Remove bordas e scrollbars do iframe */
-    iframe {
-        border: none !important;
         width: 100% !important;
     }
+
+    /* 3. Remove o espaço vazio no topo que o Streamlit reserva */
+    div.stMain {
+        padding-top: 0px !important;
+    }
+
+    /* 4. Garante que o iframe não tenha bordas ou sombras */
+    iframe {
+        border: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        display: block !important;
+        width: 100vw !important;
+    }
     
-    #MainMenu {visibility: hidden;}
+    /* 5. Estilo para o componente de HTML do Streamlit */
+    [data-testid="stHtml"] {
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+
+    /* Remove scrollbars indesejadas */
+    body {
+        overflow: hidden;
+    }
     </style>
 """, unsafe_allow_html=True)
 
 # =================================================================
-# 2. LOGICA DE DADOS (PYTHON)
+# 2. LOGICA DE DADOS
 # =================================================================
 FILE_SAVE = "progresso_final.json"
 
@@ -98,18 +111,18 @@ if "limpar" in q:
     st.query_params.clear()
     st.rerun()
 
-# Preparação dos pontos para o JS
+# Preparação dos pontos
 pontos_js = []
 proximo_id = None
 pendentes = [p for p in st.session_state.lista_pacotes if p['id'] not in st.session_state.entregues_id]
 
 if st.session_state.ultima_pos and pendentes:
-    dist_min = float('inf')
+    m_dist = float('inf')
     for p in pendentes:
         coords = banco_total.get(p['nome'], (0,0))
         d = math.sqrt((st.session_state.ultima_pos[0]-coords[0])**2 + (st.session_state.ultima_pos[1]-coords[1])**2)
-        if d < dist_min:
-            dist_min = d
+        if d < m_dist: 
+            m_dist = d
             proximo_id = p['id']
 
 for p in st.session_state.lista_pacotes:
@@ -117,13 +130,10 @@ for p in st.session_state.lista_pacotes:
     concluido = p['id'] in st.session_state.entregues_id
     cor = "#28a745" if concluido else ("#fd7e14" if p['id'] == proximo_id else "#dc3545")
     num = re.findall(r'\d+', p['nome'])[0] if re.findall(r'\d+', p['nome']) else p['nome'][:2]
-    pontos_js.append({
-        "id": p['id'], "lat": coords[0], "lng": coords[1], 
-        "nome": p['nome'], "concluido": concluido, "cor": cor, "txt": "✔" if concluido else num
-    })
+    pontos_js.append({"id": p['id'], "lat": coords[0], "lng": coords[1], "nome": p['nome'], "concluido": concluido, "cor": cor, "txt": "✔" if concluido else num})
 
 # =================================================================
-# 4. HTML/JS (INTERFACE)
+# 4. HTML/JS ÚNICO (ESTILO MOBILE APP)
 # =================================================================
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else [-16.15, -47.96]
 lista_opcoes_html = "".join([f'<option value="{n}">' for n in banco_total.keys()])
@@ -137,22 +147,16 @@ mapa_html = f"""
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        body {{ margin: 0; padding: 0; font-family: sans-serif; overflow: hidden; background: white; }}
-        #map {{ height: 100vh; width: 100vw; }}
+        html, body {{ height: 100%; width: 100%; margin: 0; padding: 0; background: white; overflow: hidden; }}
+        #map {{ height: 100%; width: 100%; }}
 
         .search-container {{
             position: fixed; top: 10px; left: 10px; right: 10px; z-index: 1000;
             display: flex; gap: 5px; background: white; padding: 6px;
             border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }}
-        #input-busca {{
-            flex: 1; border: 1px solid #ddd; padding: 10px; 
-            border-radius: 8px; font-size: 16px; outline: none;
-        }}
-        .btn-add {{
-            background: #28a745; color: white; border: none; 
-            padding: 0 15px; border-radius: 8px; font-size: 20px; font-weight: bold;
-        }}
+        #input-busca {{ flex: 1; border: 1px solid #ddd; padding: 10px; border-radius: 8px; font-size: 16px; outline: none; }}
+        .btn-add {{ background: #28a745; color: white; border: none; padding: 0 15px; border-radius: 8px; font-size: 20px; font-weight: bold; }}
 
         #sheet {{
             position: fixed; bottom: -300px; left: 0; right: 0;
@@ -163,21 +167,10 @@ mapa_html = f"""
         #sheet.active {{ bottom: 0; }}
         .sheet-title {{ font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #333; }}
         .btn-row {{ display: flex; gap: 10px; }}
-        .btn {{
-            flex: 1; text-align: center; padding: 16px; border-radius: 12px;
-            text-decoration: none; color: white; font-weight: bold; font-size: 14px;
-        }}
-        .pin {{
-            width: 36px; height: 36px; border-radius: 50%;
-            display: flex; align-items: center; justify-content: center;
-            color: white; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-        }}
-        .btn-clear {{
-            position: fixed; top: 75px; right: 10px; z-index: 1000;
-            background: rgba(255,255,255,0.9); border: none; padding: 8px 12px;
-            border-radius: 8px; font-size: 12px; font-weight: bold; color: #d33;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }}
+        .btn {{ flex: 1; text-align: center; padding: 16px; border-radius: 12px; text-decoration: none; color: white; font-weight: bold; font-size: 14px; }}
+        
+        .pin {{ width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }}
+        .btn-clear {{ position: fixed; top: 75px; right: 10px; z-index: 1000; background: rgba(255,255,255,0.9); border: none; padding: 8px 12px; border-radius: 8px; font-size: 12px; font-weight: bold; color: #d33; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
     </style>
 </head>
 <body>
@@ -186,11 +179,8 @@ mapa_html = f"""
         <datalist id="lugares">{lista_opcoes_html}</datalist>
         <button class="btn-add" onclick="adicionar()">➕</button>
     </div>
-
     <button class="btn-clear" onclick="if(confirm('Limpar tudo?')) window.location.href='?limpar=1'">🗑️ LIMPAR</button>
-
     <div id="map"></div>
-
     <div id="sheet">
         <div id="s-nome" class="sheet-title">Local</div>
         <div class="btn-row">
@@ -199,27 +189,14 @@ mapa_html = f"""
         </div>
         <button onclick="closeSheet()" style="width:100%; margin-top:15px; background:none; border:none; color:#999;">FECHAR</button>
     </div>
-
     <script>
         var map = L.map('map', {{ zoomControl: false, attributionControl: false }}).setView([{centro[0]}, {centro[1]}], 16);
         L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={{x}}&y={{y}}&z={{z}}').addTo(map);
-
         var pontos = {json.dumps(pontos_js)};
-        
-        function adicionar() {{
-            var val = document.getElementById('input-busca').value;
-            if(val) window.location.href = "?add=" + encodeURIComponent(val);
-        }}
-
+        function adicionar() {{ var val = document.getElementById('input-busca').value; if(val) window.location.href = "?add=" + encodeURIComponent(val); }}
         function closeSheet() {{ document.getElementById('sheet').classList.remove('active'); }}
-
         pontos.forEach(function(p) {{
-            var icon = L.divIcon({{
-                className: '',
-                html: '<div class="pin" style="background:'+p.cor+'; opacity:'+(p.concluido ? 0.6 : 1)+'">'+p.txt+'</div>',
-                iconSize: [36, 36], iconAnchor: [18, 18]
-            }});
-
+            var icon = L.divIcon({{ className: '', html: '<div class="pin" style="background:'+p.cor+'; opacity:'+(p.concluido ? 0.6 : 1)+'">'+p.txt+'</div>', iconSize: [36, 36], iconAnchor: [18, 18] }});
             var marker = L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map);
             marker.on('click', function(e) {{
                 L.DomEvent.stopPropagation(e);
@@ -232,13 +209,11 @@ mapa_html = f"""
                 map.panTo([p.lat, p.lng]);
             }});
         }});
-
         map.on('click', closeSheet);
         map.locate({{watch: true, enableHighAccuracy: true}});
         var userMarker;
         map.on('locationfound', function(e) {{
-            if (!userMarker) {{
-                userMarker = L.circleMarker(e.latlng, {{radius: 8, color: 'white', fillColor: '#4285F4', fillOpacity: 1, weight: 3}}).addTo(map);
+            if (!userMarker) {{ userMarker = L.circleMarker(e.latlng, {{radius: 8, color: 'white', fillColor: '#4285F4', fillOpacity: 1, weight: 3}}).addTo(map);
             }} else {{ userMarker.setLatLng(e.latlng); }}
         }});
     </script>
@@ -246,5 +221,5 @@ mapa_html = f"""
 </html>
 """
 
-# Aumentamos a altura para 850 para cobrir quase todo o viewport do celular
-st.components.v1.html(mapa_html, height=850)
+# Altura 1000 para garantir que ocupe a tela inteira mesmo com a barra do navegador mobile
+st.components.v1.html(mapa_html, height=1000)
