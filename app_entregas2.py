@@ -241,3 +241,57 @@ with col_clear:
         st.session_state.entregues_id = []
         st.session_state.ultima_pos = None
         st.rerun()
+
+# =================================================================
+# 7. PAINEL DE CONTROLE ÚNICO (DENTRO E FORA DO CLIQUE)
+# =================================================================
+if pendentes:
+    st.write("---") # Linha divisória única
+    
+    # Busca os dados do ponto que deve estar no menu (seja pelo clique ou automático)
+    p_atual = next((p for p in pontos_para_o_mapa if p['id'] == id_foco), pendentes[0])
+    
+    # Título dinâmico: Se foi clicado mostra "Selecionado", se for automático mostra "Próximo"
+    tipo_status = "📍 Selecionado:" if id_selecionado_via_mapa else "📍 Próximo:"
+    st.info(f"**{tipo_status}** {p_atual['nome']}")
+    
+    col_gps, col_ok = st.columns(2)
+    with col_gps:
+        st.link_button("🚀 ABRIR GPS", f"https://www.google.com/maps/dir/?api=1&destination={p_atual['lat']},{p_atual['lng']}", use_container_width=True)
+    with col_ok:
+        if st.button("✅ CONCLUIR", use_container_width=True, type="primary"):
+            st.session_state.entregues_id.append(p_atual['id'])
+            st.session_state.ultima_pos = [p_atual['lat'], p_atual['lng']]
+            # Limpa a seleção da URL para voltar ao automático no próximo
+            st.query_params.clear()
+            salvar_progresso(); st.rerun()
+
+st.write("---")
+
+# =================================================================
+# 8. LINHA DE GERENCIAMENTO (SALVAR E LIMPAR)
+# =================================================================
+col_save, col_clear = st.columns(2)
+
+with col_save:
+    if st.session_state.lista_pacotes:
+        texto_rota = "📋 ROTA DE ENTREGAS\n" + "="*25 + "\n"
+        for i, p in enumerate(st.session_state.lista_pacotes, 1):
+            status = "✅" if p['id'] in st.session_state.entregues_id else "❌"
+            texto_rota += f"{i}. {status} {p['nome']}\n"
+        
+        st.download_button(
+            label="💾 SALVAR TXT",
+            data=texto_rota,
+            file_name="minha_rota.txt",
+            use_container_width=True
+        )
+
+with col_clear:
+    if st.button("🗑️ LIMPAR MAPA", use_container_width=True):
+        if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
+        st.session_state.lista_pacotes = []
+        st.session_state.entregues_id = []
+        st.session_state.ultima_pos = None
+        st.query_params.clear()
+        st.rerun()
