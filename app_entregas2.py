@@ -133,19 +133,7 @@ with st.sidebar:
         st.caption("Itens na fila:")
         for p in st.session_state.lista_pacotes[-5:]: # Mostra os últimos 5
             st.text(f"• {p['nome']}")
-# =================================================================
-# 4. BUSCA E ADICIONAR
-# =================================================================
-c1, c2 = st.columns([5, 1])
-with c1:
-    busca = st.selectbox("Busca", options=["(Adicionar...)"] + list(banco_total.keys()), label_visibility="collapsed")
-with c2:
-    if st.button("➕"):
-        if busca and busca != "(Adicionar...)":
-            nid = f"{busca}_{len(st.session_state.lista_pacotes)}"
-            st.session_state.lista_pacotes.append({"id": nid, "nome": busca})
-            st.session_state.ultima_pos = banco_total[busca]
-            salvar_progresso(); st.rerun()
+
 
 # =================================================================
 # 5. LÓGICA DE QUAIS PONTOS MOSTRAR (VISUAL LIMPO)
