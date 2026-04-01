@@ -9,22 +9,24 @@ import math
 # =================================================================
 st.markdown("""
     <style>
-    /* 1. FAZ A BARRA DO TOPO FICAR TRANSPARENTE E NÃO BLOQUEAR CLIQUES */
-    [data-testid="stHeader"] {
-        background-color: rgba(0,0,0,0) !important;
-        height: 0px !important;
+    /* 1. MOVE O MENU LATERAL PARA A DIREITA */
+    [data-testid="stSidebar"] {
+        right: 0;
+        left: auto !important;
+        border-left: 1px solid #333;
     }
+    [data-testid="stSidebarNav"] { display: none; } /* Esconde lixo do menu */
 
-    /* 2. FORÇA O BOTÃO DO MENU (TRÊS RISQUINHOS) A APARECER */
-    /* Ele vai ficar fixo no canto superior esquerdo */
+    /* 2. POSICIONA O BOTÃO DE ABRIR NO CANTO SUPERIOR DIREITO */
     [data-testid="stSidebarCollapsedControl"] {
-        background-color: #1E1E1E !important; /* Cor escura */
+        background-color: #1E1E1E !important;
         color: white !important;
         border-radius: 10px !important;
         width: 45px !important;
         height: 45px !important;
         top: 10px !important;
-        left: 10px !important;
+        right: 10px !important; /* Move para a direita */
+        left: auto !important;
         position: fixed !important;
         z-index: 1000000 !important;
         display: flex !important;
@@ -33,16 +35,12 @@ st.markdown("""
         box-shadow: 0px 4px 15px rgba(0,0,0,0.6) !important;
         border: 1px solid #444 !important;
     }
+
+    /* 3. DEIXA O TOPO TRANSPARENTE */
+    [data-testid="stHeader"] { background: rgba(0,0,0,0) !important; height: 0px !important; }
     
-    /* Garante que o ícone do menu seja branco */
-    [data-testid="stSidebarCollapsedControl"] svg {
-        fill: white !important;
-    }
-
-    /* Ajusta o conteúdo para não bater no topo */
-    .block-container { padding-top: 3.5rem !important; }
-
-    /* Esconde apenas o lixo (toolbar e footer) */
+    /* Ajusta o mapa para ocupar a tela toda */
+    .block-container { padding: 0rem !important; }
     [data-testid="stToolbar"], footer { display: none !important; }
     </style>
 """, unsafe_allow_html=True)
@@ -81,48 +79,60 @@ def carregar_banco():
 banco_total = carregar_banco()
 
 # =================================================================
-# 3. MENU LATERAL (AÇÕES DO SISTEMA)
+# 3. MENU LATERAL DIREITO (GERENCIAMENTO COMPLETO)
 # =================================================================
 with st.sidebar:
-    st.title("🗺️ Menu de Opções")
+    st.title("📍 Gerenciar Rota")
     st.write("---")
 
-    # AÇÃO 1: SALVAR ROTA
-    st.subheader("💾 Exportar Rota")
+    # --- ADICIONAR QUADRAS (AGORA DENTRO DO MENU) ---
+    st.subheader("➕ Adicionar Local")
+    busca = st.selectbox("Selecione a Quadra", 
+                         options=["(Escolha...)"] + list(banco_total.keys()), 
+                         label_visibility="collapsed")
+    
+    if st.button("ADICIONAR À LISTA", use_container_width=True):
+        if busca and busca != "(Escolha...)":
+            nid = f"{busca}_{len(st.session_state.lista_pacotes)}"
+            st.session_state.lista_pacotes.append({"id": nid, "nome": busca})
+            st.session_state.ultima_pos = banco_total[busca]
+            salvar_progresso()
+            st.rerun()
+
+    st.write("---")
+
+    # --- SALVAR ROTA ---
+    st.subheader("💾 Exportar")
     if st.session_state.lista_pacotes:
-        # Gerar o texto do arquivo
-        txt_conteudo = "ROTA DE ENTREGAS\n" + "="*30 + "\n"
+        texto_rota = "ROTA DE ENTREGAS\n" + "="*25 + "\n"
         for i, p in enumerate(st.session_state.lista_pacotes, 1):
             status = "[OK]" if p['id'] in st.session_state.entregues_id else "[ ]"
-            txt_conteudo += f"{i}. {status} {p['nome']}\n"
+            texto_rota += f"{i}. {status} {p['nome']}\n"
         
-        # O Streamlit só "salva" via download no navegador
         st.download_button(
             label="BAIXAR ROTA (.txt)",
-            data=txt_conteudo,
+            data=texto_rota,
             file_name="minha_rota.txt",
             mime="text/plain",
             use_container_width=True
         )
-    else:
-        st.info("Nenhum item na rota.")
+    
+    st.write("")
 
-    st.write("---")
-
-    # AÇÃO 2: LIMPAR MAPA
-    st.subheader("🗑️ Limpar Dados")
-    if st.button("LIMPAR TUDO", use_container_width=True, type="primary"):
-        if os.path.exists(FILE_SAVE):
-            os.remove(FILE_SAVE)
-        # Reseta as variáveis da sessão
+    # --- LIMPAR TUDO ---
+    if st.button("🗑️ LIMPAR MAPA", use_container_width=True, type="secondary"):
+        if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
         st.session_state.lista_pacotes = []
         st.session_state.entregues_id = []
         st.session_state.ultima_pos = None
-        st.toast("Mapa e progresso apagados!")
         st.rerun()
 
     st.write("---")
-    st.caption("Versão GPS Profissional")
+    # Lista rápida de itens já adicionados para conferência
+    if st.session_state.lista_pacotes:
+        st.caption("Itens na fila:")
+        for p in st.session_state.lista_pacotes[-5:]: # Mostra os últimos 5
+            st.text(f"• {p['nome']}")
 # =================================================================
 # 4. BUSCA E ADICIONAR
 # =================================================================
