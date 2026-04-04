@@ -3,7 +3,6 @@ import streamlit as st
 import re
 import os
 import math
-from collections import Counter
 
 # =================================================================
 # 1. CONFIGURAÇÃO DE TELA (UI LIMPA)
@@ -45,7 +44,6 @@ def carregar_banco():
     try:
         with open('Lugares marcados.json', 'r', encoding='utf-8') as f:
             dados_j = json.load(f)
-        # Criar dicionário e ordenar chaves para busca mais fácil
         banco = {str(l['properties'].get('title') or l['properties'].get('name')).strip(): 
                 (l['geometry']['coordinates'][1], l['geometry']['coordinates'][0]) 
                 for l in dados_j.get('features',[])}
@@ -59,7 +57,7 @@ q = st.query_params
 if "add" in q:
     nome = q["add"]
     if nome in banco_total:
-        nid = f"{nome}_{len(st.session_state.lista_pacotes)}_{math.floor(st.time.time())}" if 'time' in dir(st) else f"{nome}_{len(st.session_state.lista_pacotes)}"
+        nid = f"{nome}_{len(st.session_state.lista_pacotes)}"
         st.session_state.lista_pacotes.append({"id": nid, "nome": nome})
         st.session_state.ultima_pos = banco_total[nome]
         salvar_progresso()
@@ -82,31 +80,26 @@ if "limpar" in q:
     st.query_params.clear()
     st.rerun()
 
-# --- LÓGICA DE AGRUPAMENTO PARA O MAPA ---
-pendentes = [p for p in st.session_state.lista_pacotes if p['id'] not in st.session_state.entregues_id]
+# --- LÓGICA DE AGRUPAMENTO ---
+pendentes_total = [p for p in st.session_state.lista_pacotes if p['id'] not in st.session_state.entregues_id]
 
-# Encontrar o ID mais próximo para destacar (Lógica do GPS)
 proximo_id = None
-if st.session_state.ultima_pos and pendentes:
+if st.session_state.ultima_pos and pendentes_total:
     dist_min = float('inf')
-    for p in pendentes:
+    for p in pendentes_total:
         coords = banco_total.get(p['nome'], (0,0))
         d = math.sqrt((st.session_state.ultima_pos[0]-coords[0])**2 + (st.session_state.ultima_pos[1]-coords[1])**2)
         if d < dist_min:
             dist_min = d
             proximo_id = p['id']
 
-# Agrupar pacotes por nome para mostrar "x2", "x3"
 agrupado = {}
 for p in st.session_state.lista_pacotes:
     nome = p['nome']
     if nome not in agrupado:
-        agrupado[nome] = {"total": 0, "pendentes_ids": [], "concluidos_count": 0}
-    
+        agrupado[nome] = {"total": 0, "pendentes_ids": []}
     agrupado[nome]["total"] += 1
-    if p['id'] in st.session_state.entregues_id:
-        agrupado[nome]["concluidos_count"] += 1
-    else:
+    if p['id'] not in st.session_state.entregues_id:
         agrupado[nome]["pendentes_ids"].append(p['id'])
 
 pontos_js = []
@@ -116,37 +109,29 @@ for nome, info in agrupado.items():
     p_ids = info["pendentes_ids"]
     esta_concluido = len(p_ids) == 0
     
-    # Define a cor
-    if esta_concluido:
-        cor = "#28a745" # Verde
-    elif any(pid == proximo_id for pid in p_ids):
-        cor = "#fd7e14" # Laranja (Próximo)
-    else:
-        cor = "#dc3545" # Vermelho
+    if esta_concluido: cor = "#28a745"
+    elif any(pid == proximo_id for pid in p_ids): cor = "#fd7e14"
+    else: cor = "#dc3545"
     
-    # Texto da bolinha (Ex: 30 x2)
     num_match = re.findall(r'\d+', nome)
     base_txt = num_match[0] if num_match else nome[:3]
-    
-    if esta_concluido:
-        display_txt = "✔"
-    else:
-        display_txt = f"{base_txt} x{total}" if total > 1 else base_txt
+    display_txt = "✔" if esta_concluido else (f"{base_txt} x{total}" if total > 1 else base_txt)
 
     pontos_js.append({
         "id": p_ids[0] if not esta_concluido else "done",
         "lat": coords[0], "lng": coords[1], 
-        "nome": f"{nome} ({total} pacotes)" if total > 1 else nome,
-        "concluido": esta_concluido, 
-        "cor": cor, 
-        "txt": display_txt
+        "nome": nome, "total": total,
+        "concluido": esta_concluido, "cor": cor, "txt": display_txt
     })
 
+# --- CONTADORES PARA O DISPLAY ---
+total_bolinhas = len(pontos_js)
+bolinhas_pendentes = len([p for p in pontos_js if not p['concluido']])
+
 # =================================================================
-# 4. HTML/JS (INTERFACE COMPLETA)
+# 4. HTML/JS
 # =================================================================
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else [-16.15, -47.96]
-# Lista de opções ordenada para facilitar a busca exata
 lista_opcoes_html = "".join([f'<option value="{n}">' for n in banco_total.keys()])
 
 mapa_html = f"""
@@ -166,58 +151,60 @@ mapa_html = f"""
             display: flex; gap: 5px; background: white; padding: 8px;
             border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }}
-        #input-busca {{
-            flex: 1; border: 1px solid #ddd; padding: 10px; 
-            border-radius: 8px; font-size: 16px; outline: none;
-        }}
-        .btn-add {{
-            background: #28a745; color: white; border: none; 
-            padding: 0 15px; border-radius: 8px; font-size: 20px; font-weight: bold;
-        }}
+        #input-busca {{ flex: 1; border: 1px solid #ddd; padding: 10px; border-radius: 8px; font-size: 16px; outline: none; }}
+        .btn-add {{ background: #28a745; color: white; border: none; padding: 0 15px; border-radius: 8px; font-size: 20px; }}
 
-        #sheet {{
-            position: fixed; bottom: -300px; left: 0; right: 0;
-            background: white; z-index: 2000; padding: 20px;
-            border-radius: 20px 20px 0 0; box-shadow: 0 -5px 25px rgba(0,0,0,0.3);
-            transition: bottom 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        }}
-        #sheet.active {{ bottom: 0; }}
-        .sheet-title {{ font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #333; }}
-        .btn-row {{ display: flex; gap: 10px; }}
-        .btn {{
-            flex: 1; text-align: center; padding: 16px; border-radius: 12px;
-            text-decoration: none; color: white; font-weight: bold; font-size: 14px;
-        }}
-
-        .pin {{
-            min-width: 36px; height: 36px; padding: 0 5px; border-radius: 18px;
-            display: flex; align-items: center; justify-content: center;
-            color: white; font-weight: bold; border: 2px solid white; 
-            box-shadow: 0 2px 5px rgba(0,0,0,0.3); white-space: nowrap; font-size: 13px;
+        /* CONTADOR DE BOLINHAS */
+        .count-badge {{
+            position: fixed; top: 75px; left: 10px; z-index: 1000;
+            background: #333; color: white; padding: 6px 12px;
+            border-radius: 20px; font-size: 13px; font-weight: bold;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.2);
         }}
 
         .btn-clear {{
             position: fixed; top: 75px; right: 10px; z-index: 1000;
             background: rgba(255,255,255,0.9); border: none; padding: 8px 12px;
             border-radius: 8px; font-size: 12px; font-weight: bold; color: #d33;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }}
+
+        #sheet {{
+            position: fixed; bottom: -300px; left: 0; right: 0;
+            background: white; z-index: 2000; padding: 20px;
+            border-radius: 20px 20px 0 0; box-shadow: 0 -5px 25px rgba(0,0,0,0.3);
+            transition: bottom 0.4s ease;
+        }}
+        #sheet.active {{ bottom: 0; }}
+        .btn-row {{ display: flex; gap: 10px; margin-top: 15px; }}
+        .btn {{ flex: 1; text-align: center; padding: 16px; border-radius: 12px; text-decoration: none; color: white; font-weight: bold; }}
+        
+        .pin {{
+            min-width: 36px; height: 36px; padding: 0 6px; border-radius: 18px;
+            display: flex; align-items: center; justify-content: center;
+            color: white; font-weight: bold; border: 2px solid white; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3); font-size: 13px; white-space: nowrap;
         }}
     </style>
 </head>
 <body>
 
     <div class="search-container">
-        <input type="text" id="input-busca" list="lugares" placeholder="Ex: Q 4 Pix...">
+        <input type="text" id="input-busca" list="lugares" placeholder="Pesquisar local...">
         <datalist id="lugares">{lista_opcoes_html}</datalist>
         <button class="btn-add" onclick="adicionar()">➕</button>
     </div>
 
-    <button class="btn-clear" onclick="if(confirm('Limpar lista de entregas?')) window.location.href='?limpar=1'">🗑️ LIMPAR</button>
+    <div class="count-badge">
+        📍 {bolinhas_pendentes} / {total_bolinhas} Paradas
+    </div>
+
+    <button class="btn-clear" onclick="if(confirm('Limpar tudo?')) window.location.href='?limpar=1'">🗑️ LIMPAR</button>
 
     <div id="map"></div>
 
     <div id="sheet">
-        <div id="s-nome" class="sheet-title">Local</div>
+        <div id="s-nome" style="font-size:18px; font-weight:bold;">Local</div>
+        <div id="s-info" style="font-size:14px; color: #666;"></div>
         <div class="btn-row">
             <a id="s-gps" href="#" target="_blank" class="btn" style="background:#4285F4">🚀 GPS</a>
             <a id="s-done" href="#" target="_self" class="btn" style="background:#28a745">✅ CONCLUIR</a>
@@ -250,6 +237,7 @@ mapa_html = f"""
             marker.on('click', function(e) {{
                 L.DomEvent.stopPropagation(e);
                 document.getElementById('s-nome').innerText = p.nome;
+                document.getElementById('s-info').innerText = p.total + (p.total > 1 ? " entregas neste local" : " entrega neste local");
                 document.getElementById('s-gps').href = "https://www.google.com/maps/dir/?api=1&destination="+p.lat+","+p.lng;
                 
                 var btnDone = document.getElementById('s-done');
@@ -266,7 +254,6 @@ mapa_html = f"""
         }});
 
         map.on('click', closeSheet);
-
         map.locate({{watch: true, enableHighAccuracy: true}});
         var userMarker;
         map.on('locationfound', function(e) {{
