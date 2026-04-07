@@ -5,20 +5,22 @@ import os
 import math
 
 # =================================================================
-# 1. CONFIGURAÇÃO DE TELA (UI LIMPA)
+# 1. CONFIGURAÇÃO DE TELA
 # =================================================================
-st.set_page_config(page_title="GPS Profissional", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="GPS Profissional - Logística", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
     <style>
-    [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stToolbar"], footer { display: none !important; }
+    [data-testid="stHeader"], [data-testid="stToolbar"], footer { display: none !important; }
     .block-container { padding: 0 !important; max-width: 100% !important; margin: 0 !important; }
     iframe { width: 100vw; height: 100vh; border: none !important; }
+    /* Estilização da Sidebar para caber no celular */
+    [data-testid="stSidebar"] { background-color: #f8f9fa; min-width: 300px !important; }
     </style>
 """, unsafe_allow_html=True)
 
 # =================================================================
-# 2. LOGICA DE DADOS (PYTHON)
+# 2. LOGICA DE DADOS
 # =================================================================
 FILE_SAVE = "progresso_final.json"
 
@@ -52,18 +54,45 @@ def carregar_banco():
 
 banco_total = carregar_banco()
 
-# AÇÕES VIA URL
-q = st.query_params
-if "add" in q:
-    nome = q["add"]
-    if nome in banco_total:
-        nid = f"{nome}_{len(st.session_state.lista_pacotes)}"
-        st.session_state.lista_pacotes.append({"id": nid, "nome": nome})
-        st.session_state.ultima_pos = banco_total[nome]
-        salvar_progresso()
-    st.query_params.clear()
-    st.rerun()
+# =================================================================
+# 3. NOVO: FUNÇÃO DE ADIÇÃO EM MASSA
+# =================================================================
+with st.sidebar:
+    st.title("📦 Gestão de Carga")
+    
+    with st.expander("➕ ADICIONAR EM MASSA", expanded=True):
+        st.write("Cole o texto das entregas abaixo:")
+        texto_bruto = st.text_area("Ex: Quadra 648, Quadra 361...", height=150)
+        
+        if texto_bruto:
+            # Encontrar correspondências no banco de dados
+            encontrados = []
+            for nome_local in banco_total.keys():
+                # Procura se o nome do local (ou número da quadra) está no texto colado
+                if nome_local.lower() in texto_bruto.lower():
+                    encontrados.append(nome_local)
+            
+            if encontrados:
+                st.success(f"Encontrado {len(encontrados)} locais!")
+                if st.button("✅ ADICIONAR TUDO AGORA"):
+                    for item in encontrados:
+                        nid = f"{item}_{len(st.session_state.lista_pacotes)}"
+                        st.session_state.lista_pacotes.append({"id": nid, "nome": item})
+                    salvar_progresso()
+                    st.rerun()
+            else:
+                st.warning("Nenhum local reconhecido no texto.")
 
+    st.divider()
+    if st.button("🗑️ LIMPAR ROTA COMPLETA", use_container_width=True):
+        if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
+        st.session_state.lista_pacotes, st.session_state.entregues_id, st.session_state.ultima_pos = [], [], None
+        st.rerun()
+
+# =================================================================
+# 4. PROCESSAMENTO DE URL E MAPA (MANTIDO)
+# =================================================================
+q = st.query_params
 if "concluir" in q:
     id_p = q["concluir"]
     if id_p not in st.session_state.entregues_id:
@@ -74,15 +103,8 @@ if "concluir" in q:
     st.query_params.clear()
     st.rerun()
 
-if "limpar" in q:
-    if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
-    st.session_state.lista_pacotes, st.session_state.entregues_id, st.session_state.ultima_pos = [], [], None
-    st.query_params.clear()
-    st.rerun()
-
-# --- LÓGICA DE AGRUPAMENTO ---
+# Lógica de agrupamento para o mapa
 pendentes_total = [p for p in st.session_state.lista_pacotes if p['id'] not in st.session_state.entregues_id]
-
 proximo_id = None
 if st.session_state.ultima_pos and pendentes_total:
     dist_min = float('inf')
@@ -96,44 +118,29 @@ if st.session_state.ultima_pos and pendentes_total:
 agrupado = {}
 for p in st.session_state.lista_pacotes:
     nome = p['nome']
-    if nome not in agrupado:
-        agrupado[nome] = {"total": 0, "pendentes_ids": []}
+    if nome not in agrupado: agrupado[nome] = {"total": 0, "pendentes_ids": []}
     agrupado[nome]["total"] += 1
-    if p['id'] not in st.session_state.entregues_id:
-        agrupado[nome]["pendentes_ids"].append(p['id'])
+    if p['id'] not in st.session_state.entregues_id: agrupado[nome]["pendentes_ids"].append(p['id'])
 
 pontos_js = []
 for nome, info in agrupado.items():
     coords = banco_total.get(nome, (0,0))
-    total = info["total"]
     p_ids = info["pendentes_ids"]
     esta_concluido = len(p_ids) == 0
-    
-    if esta_concluido: cor = "#28a745"
-    elif any(pid == proximo_id for pid in p_ids): cor = "#fd7e14"
-    else: cor = "#dc3545"
+    cor = "#28a745" if esta_concluido else ("#fd7e14" if any(pid == proximo_id for pid in p_ids) else "#dc3545")
     
     num_match = re.findall(r'\d+', nome)
     base_txt = num_match[0] if num_match else nome[:3]
-    display_txt = "✔" if esta_concluido else (f"{base_txt} x{total}" if total > 1 else base_txt)
+    display_txt = "✔" if esta_concluido else (f"{base_txt} x{info['total']}" if info['total'] > 1 else base_txt)
 
     pontos_js.append({
         "id": p_ids[0] if not esta_concluido else "done",
-        "lat": coords[0], "lng": coords[1], 
-        "nome": nome, "total": total,
-        "concluido": esta_concluido, "cor": cor, "txt": display_txt
+        "lat": coords[0], "lng": coords[1], "nome": nome, 
+        "concluido": esta_concluido, "cor": cor, "txt": display_txt, "total": info['total']
     })
 
-# --- CONTADORES PARA O DISPLAY ---
-total_bolinhas = len(pontos_js)
-bolinhas_pendentes = len([p for p in pontos_js if not p['concluido']])
-
-# =================================================================
-# 4. HTML/JS
-# =================================================================
+# HTML Gerado
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else [-16.15, -47.96]
-lista_opcoes_html = "".join([f'<option value="{n}">' for n in banco_total.keys()])
-
 mapa_html = f"""
 <!DOCTYPE html>
 <html>
@@ -143,127 +150,47 @@ mapa_html = f"""
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        body {{ margin: 0; padding: 0; font-family: sans-serif; overflow: hidden; background: #eee; }}
-        #map {{ height: 100vh; width: 100vw; z-index: 1; }}
-
-        .search-container {{
-            position: fixed; top: 10px; left: 10px; right: 10px; z-index: 1000;
-            display: flex; gap: 5px; background: white; padding: 8px;
-            border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        }}
-        #input-busca {{ flex: 1; border: 1px solid #ddd; padding: 10px; border-radius: 8px; font-size: 16px; outline: none; }}
-        .btn-add {{ background: #28a745; color: white; border: none; padding: 0 15px; border-radius: 8px; font-size: 20px; }}
-
-        /* CONTADOR DE BOLINHAS */
+        body {{ margin: 0; padding: 0; overflow: hidden; }}
+        #map {{ height: 100vh; width: 100vw; }}
         .count-badge {{
-            position: fixed; top: 75px; left: 10px; z-index: 1000;
-            background: #333; color: white; padding: 6px 12px;
-            border-radius: 20px; font-size: 13px; font-weight: bold;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.2);
+            position: fixed; top: 15px; right: 15px; z-index: 1000;
+            background: #333; color: white; padding: 8px 15px; border-radius: 20px; font-weight: bold;
         }}
-
-        .btn-clear {{
-            position: fixed; top: 75px; right: 10px; z-index: 1000;
-            background: rgba(255,255,255,0.9); border: none; padding: 8px 12px;
-            border-radius: 8px; font-size: 12px; font-weight: bold; color: #d33;
-        }}
-
         #sheet {{
-            position: fixed; bottom: -300px; left: 0; right: 0;
-            background: white; z-index: 2000; padding: 20px;
-            border-radius: 20px 20px 0 0; box-shadow: 0 -5px 25px rgba(0,0,0,0.3);
-            transition: bottom 0.4s ease;
+            position: fixed; bottom: -300px; left: 0; right: 0; background: white; z-index: 2000;
+            padding: 20px; border-radius: 20px 20px 0 0; transition: bottom 0.4s; box-shadow: 0 -5px 20px rgba(0,0,0,0.2);
         }}
         #sheet.active {{ bottom: 0; }}
-        .btn-row {{ display: flex; gap: 10px; margin-top: 15px; }}
-        .btn {{ flex: 1; text-align: center; padding: 16px; border-radius: 12px; text-decoration: none; color: white; font-weight: bold; }}
-        
-        .pin {{
-            min-width: 36px; height: 36px; padding: 0 6px; border-radius: 18px;
-            display: flex; align-items: center; justify-content: center;
-            color: white; font-weight: bold; border: 2px solid white; 
-            box-shadow: 0 2px 5px rgba(0,0,0,0.3); font-size: 13px; white-space: nowrap;
-        }}
+        .btn {{ display: block; text-align: center; padding: 15px; border-radius: 10px; text-decoration: none; color: white; font-weight: bold; margin-top: 10px; }}
+        .pin {{ min-width: 36px; height: 36px; padding: 0 6px; border-radius: 18px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; border: 2px solid white; font-size: 13px; }}
     </style>
 </head>
 <body>
-
-    <div class="search-container">
-        <input type="text" id="input-busca" list="lugares" placeholder="Pesquisar local...">
-        <datalist id="lugares">{lista_opcoes_html}</datalist>
-        <button class="btn-add" onclick="adicionar()">➕</button>
-    </div>
-
-    <div class="count-badge">
-        📍 {bolinhas_pendentes} / {total_bolinhas} Paradas
-    </div>
-
-    <button class="btn-clear" onclick="if(confirm('Limpar tudo?')) window.location.href='?limpar=1'">🗑️ LIMPAR</button>
-
+    <div class="count-badge">📍 {len(pendentes_total)} Pendentes</div>
     <div id="map"></div>
-
     <div id="sheet">
-        <div id="s-nome" style="font-size:18px; font-weight:bold;">Local</div>
-        <div id="s-info" style="font-size:14px; color: #666;"></div>
-        <div class="btn-row">
-            <a id="s-gps" href="#" target="_blank" class="btn" style="background:#4285F4">🚀 GPS</a>
-            <a id="s-done" href="#" target="_self" class="btn" style="background:#28a745">✅ CONCLUIR</a>
-        </div>
-        <button onclick="closeSheet()" style="width:100%; margin-top:15px; background:none; border:none; color:#999;">FECHAR</button>
+        <div id="s-nome" style="font-size:18px; font-weight:bold;"></div>
+        <a id="s-gps" href="#" target="_blank" class="btn" style="background:#4285F4">🚀 INICIAR GPS</a>
+        <a id="s-done" href="#" target="_self" class="btn" style="background:#28a745">✅ CONCLUIR</a>
+        <button onclick="document.getElementById('sheet').classList.remove('active')" style="width:100%; border:none; background:none; color:gray; margin-top:10px;">FECHAR</button>
     </div>
-
     <script>
-        var map = L.map('map', {{ zoomControl: false, attributionControl: false }}).setView([{centro[0]}, {centro[1]}], 16);
+        var map = L.map('map', {{ zoomControl: false, attributionControl: false }}).setView([{centro[0]}, {centro[1]}], 15);
         L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={{x}}&y={{y}}&z={{z}}').addTo(map);
 
         var pontos = {json.dumps(pontos_js)};
-        
-        function adicionar() {{
-            var val = document.getElementById('input-busca').value;
-            if(val) window.location.href = "?add=" + encodeURIComponent(val);
-        }}
-
-        function closeSheet() {{ document.getElementById('sheet').classList.remove('active'); }}
-
         pontos.forEach(function(p) {{
-            var icon = L.divIcon({{
-                className: '',
-                html: '<div class="pin" style="background:'+p.cor+'; opacity:'+(p.concluido ? 0.6 : 1)+'">'+p.txt+'</div>',
-                iconSize: [null, 36], iconAnchor: [18, 18]
-            }});
-
-            var marker = L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map);
-            
-            marker.on('click', function(e) {{
-                L.DomEvent.stopPropagation(e);
-                document.getElementById('s-nome').innerText = p.nome;
-                document.getElementById('s-info').innerText = p.total + (p.total > 1 ? " entregas neste local" : " entrega neste local");
+            var icon = L.divIcon({{ className: '', html: '<div class="pin" style="background:'+p.cor+'; opacity:'+(p.concluido?0.5:1)+'">'+p.txt+'</div>', iconSize: [null, 36] }});
+            L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map).on('click', function() {{
+                document.getElementById('s-nome').innerText = p.nome + " (" + p.total + " pacotes)";
                 document.getElementById('s-gps').href = "https://www.google.com/maps/dir/?api=1&destination="+p.lat+","+p.lng;
-                
-                var btnDone = document.getElementById('s-done');
-                if(p.concluido) {{
-                    btnDone.style.display = 'none';
-                }} else {{
-                    btnDone.style.display = 'block';
-                    btnDone.href = "?concluir=" + p.id;
-                }}
-                
+                var btn = document.getElementById('s-done');
+                if(p.concluido) btn.style.display='none'; else {{ btn.style.display='block'; btn.href="?concluir="+p.id; }}
                 document.getElementById('sheet').classList.add('active');
-                map.panTo([p.lat, p.lng]);
             }});
-        }});
-
-        map.on('click', closeSheet);
-        map.locate({{watch: true, enableHighAccuracy: true}});
-        var userMarker;
-        map.on('locationfound', function(e) {{
-            if (!userMarker) {{
-                userMarker = L.circleMarker(e.latlng, {{radius: 8, color: 'white', fillColor: '#4285F4', fillOpacity: 1, weight: 3}}).addTo(map);
-            }} else {{ userMarker.setLatLng(e.latlng); }}
         }});
     </script>
 </body>
 </html>
 """
-
-st.components.v1.html(mapa_html, height=700)
+st.components.v1.html(mapa_html, height=800)
