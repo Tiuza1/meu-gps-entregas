@@ -9,15 +9,11 @@ import math
 # =================================================================
 st.set_page_config(page_title="GPS Profissional", layout="wide", initial_sidebar_state="collapsed")
 
-# CSS Ajustado para permitir ver a barra lateral quando necessário
 st.markdown("""
     <style>
-    [data-testid="stHeader"], [data-testid="stToolbar"], footer { display: none !important; }
+    [data-testid="stHeader"], [data-testid="stSidebar"], [data-testid="stToolbar"], footer { display: none !important; }
     .block-container { padding: 0 !important; max-width: 100% !important; margin: 0 !important; }
     iframe { width: 100vw; height: 100vh; border: none !important; }
-    
-    /* Estilo para a área de controles flutuante ou sidebar */
-    .stSelectbox, .stMultiSelect { background: white; border-radius: 10px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -56,37 +52,19 @@ def carregar_banco():
 
 banco_total = carregar_banco()
 
-# =================================================================
-# 3. INTERFACE DE ADIÇÃO (SIDEBAR)
-# =================================================================
-with st.sidebar:
-    st.header("⚙️ Gestão de Entregas")
-    
-    # SELEÇÃO EM MASSA
-    st.subheader("Adicionar Quadras")
-    selecionados = st.multiselect("Selecione as quadras da rota:", options=list(banco_total.keys()))
-    
-    if st.button("➕ ADICIONAR SELECIONADOS", use_container_width=True):
-        if selecionados:
-            for nome in selecionados:
-                nid = f"{nome}_{len(st.session_state.lista_pacotes)}"
-                st.session_state.lista_pacotes.append({"id": nid, "nome": nome})
-                st.session_state.ultima_pos = banco_total[nome]
-            salvar_progresso()
-            st.success(f"{len(selecionados)} locais adicionados!")
-            st.rerun()
-
-    st.divider()
-    if st.button("🗑️ LIMPAR TUDO", type="primary", use_container_width=True):
-        if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
-        st.session_state.lista_pacotes, st.session_state.entregues_id, st.session_state.ultima_pos = [], [], None
-        st.rerun()
-
-# =================================================================
-# 4. PROCESSAMENTO PARA O MAPA
-# =================================================================
-# AÇÕES VIA URL (Mantido para o botão de concluir no mapa)
+# --- AÇÕES VIA URL (ADICIONAR LOTE) ---
 q = st.query_params
+if "add_batch" in q:
+    nomes = q["add_batch"].split("|")
+    for nome in nomes:
+        if nome in banco_total:
+            nid = f"{nome}_{len(st.session_state.lista_pacotes)}"
+            st.session_state.lista_pacotes.append({"id": nid, "nome": nome})
+            st.session_state.ultima_pos = banco_total[nome]
+    salvar_progresso()
+    st.query_params.clear()
+    st.rerun()
+
 if "concluir" in q:
     id_p = q["concluir"]
     if id_p not in st.session_state.entregues_id:
@@ -97,7 +75,13 @@ if "concluir" in q:
     st.query_params.clear()
     st.rerun()
 
-# Lógica de agrupamento (igual ao seu original)
+if "limpar" in q:
+    if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
+    st.session_state.lista_pacotes, st.session_state.entregues_id, st.session_state.ultima_pos = [], [], None
+    st.query_params.clear()
+    st.rerun()
+
+# --- LÓGICA DE CÁLCULO DE PROXIMIDADE ---
 pendentes_total = [p for p in st.session_state.lista_pacotes if p['id'] not in st.session_state.entregues_id]
 proximo_id = None
 if st.session_state.ultima_pos and pendentes_total:
@@ -125,17 +109,16 @@ for nome, info in agrupado.items():
     num_match = re.findall(r'\d+', nome)
     base_txt = num_match[0] if num_match else nome[:3]
     display_txt = "✔" if esta_concluido else (f"{base_txt} x{info['total']}" if info['total'] > 1 else base_txt)
+    pontos_js.append({"id": p_ids[0] if not esta_concluido else "done", "lat": coords[0], "lng": coords[1], "nome": nome, "total": info['total'], "concluido": esta_concluido, "cor": cor, "txt": display_txt})
 
-    pontos_js.append({
-        "id": p_ids[0] if not esta_concluido else "done",
-        "lat": coords[0], "lng": coords[1], "nome": nome, "total": info["total"],
-        "concluido": esta_concluido, "cor": cor, "txt": display_txt
-    })
+total_bolinhas = len(pontos_js)
+bolinhas_pendentes = len([p for p in pontos_js if not p['concluido']])
 
 # =================================================================
-# 5. RENDERIZAÇÃO DO MAPA
+# 4. HTML/JS (COM SISTEMA DE FILA)
 # =================================================================
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else [-16.15, -47.96]
+lista_opcoes_html = "".join([f'<option value="{n}">' for n in banco_total.keys()])
 
 mapa_html = f"""
 <!DOCTYPE html>
@@ -148,11 +131,41 @@ mapa_html = f"""
     <style>
         body {{ margin: 0; padding: 0; font-family: sans-serif; overflow: hidden; background: #eee; }}
         #map {{ height: 100vh; width: 100vw; z-index: 1; }}
-        .count-badge {{
-            position: fixed; top: 15px; left: 15px; z-index: 1000;
-            background: #333; color: white; padding: 10px 15px;
-            border-radius: 20px; font-size: 14px; font-weight: bold; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+
+        /* CONTAINER DE BUSCA */
+        .search-container {{
+            position: fixed; top: 10px; left: 10px; right: 10px; z-index: 1000;
+            background: white; padding: 8px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
         }}
+        .search-row {{ display: flex; gap: 5px; }}
+        #input-busca {{ flex: 1; border: 1px solid #ddd; padding: 12px; border-radius: 8px; font-size: 16px; outline: none; }}
+        .btn-add {{ background: #007bff; color: white; border: none; padding: 0 20px; border-radius: 8px; font-size: 20px; }}
+
+        /* FILA DE ADIÇÃO (BATCH) */
+        #batch-list {{ 
+            display: none; flex-wrap: wrap; gap: 5px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #eee;
+        }}
+        .batch-item {{ 
+            background: #e9ecef; padding: 4px 10px; border-radius: 15px; font-size: 12px; 
+            display: flex; align-items: center; gap: 5px; border: 1px solid #ccc;
+        }}
+        .batch-item b {{ color: #d33; cursor: pointer; padding: 0 4px; }}
+        .btn-confirm {{ 
+            display: none; width: 100%; background: #28a745; color: white; border: none; 
+            padding: 10px; border-radius: 8px; font-weight: bold; margin-top: 8px; cursor: pointer;
+        }}
+
+        .count-badge {{
+            position: fixed; top: 85px; left: 10px; z-index: 999;
+            background: #333; color: white; padding: 6px 12px;
+            border-radius: 20px; font-size: 13px; font-weight: bold;
+        }}
+        .btn-clear {{
+            position: fixed; top: 85px; right: 10px; z-index: 999;
+            background: rgba(255,255,255,0.9); border: none; padding: 8px 12px;
+            border-radius: 8px; font-size: 12px; font-weight: bold; color: #d33;
+        }}
+
         #sheet {{
             position: fixed; bottom: -300px; left: 0; right: 0;
             background: white; z-index: 2000; padding: 20px;
@@ -160,32 +173,90 @@ mapa_html = f"""
             transition: bottom 0.4s ease;
         }}
         #sheet.active {{ bottom: 0; }}
-        .btn {{ display: block; width: 100%; text-align: center; padding: 16px; border-radius: 12px; text-decoration: none; color: white; font-weight: bold; margin-top: 10px; }}
+        .btn-row {{ display: flex; gap: 10px; margin-top: 15px; }}
+        .btn {{ flex: 1; text-align: center; padding: 16px; border-radius: 12px; text-decoration: none; color: white; font-weight: bold; }}
         .pin {{
             min-width: 36px; height: 36px; padding: 0 6px; border-radius: 18px;
             display: flex; align-items: center; justify-content: center;
-            color: white; font-weight: bold; border: 2px solid white; 
-            box-shadow: 0 2px 5px rgba(0,0,0,0.3); font-size: 13px;
+            color: white; font-weight: bold; border: 2px solid white; font-size: 13px;
         }}
     </style>
 </head>
 <body>
-    <div class="count-badge">📍 {len([p for p in pontos_js if not p['concluido']])} Paradas Restantes</div>
+
+    <div class="search-container">
+        <div class="search-row">
+            <input type="text" id="input-busca" list="lugares" placeholder="Adicionar quadra...">
+            <datalist id="lugares">{lista_opcoes_html}</datalist>
+            <button class="btn-add" onclick="addToQueue()">➕</button>
+        </div>
+        <div id="batch-list"></div>
+        <button id="btn-confirm-all" class="btn-confirm" onclick="sendBatch()">CONFIRMAR TODOS</button>
+    </div>
+
+    <div class="count-badge">📍 {bolinhas_pendentes} / {total_bolinhas}</div>
+    <button class="btn-clear" onclick="if(confirm('Limpar tudo?')) window.location.href='?limpar=1'">🗑️</button>
+
     <div id="map"></div>
+
     <div id="sheet">
-        <div id="s-nome" style="font-size:18px; font-weight:bold;"></div>
+        <div id="s-nome" style="font-size:18px; font-weight:bold;">Local</div>
         <div id="s-info" style="font-size:14px; color: #666;"></div>
-        <a id="s-gps" href="#" target="_blank" class="btn" style="background:#4285F4">🚀 INICIAR GPS</a>
-        <a id="s-done" href="#" target="_self" class="btn" style="background:#28a745">✅ CONCLUIR ENTREGA</a>
-        <button onclick="document.getElementById('sheet').classList.remove('active')" style="width:100%; margin-top:15px; background:none; border:none; color:#999;">FECHAR</button>
+        <div class="btn-row">
+            <a id="s-gps" href="#" target="_blank" class="btn" style="background:#4285F4">🚀 GPS</a>
+            <a id="s-done" href="#" target="_self" class="btn" style="background:#28a745">✅ CONCLUIR</a>
+        </div>
+        <button onclick="closeSheet()" style="width:100%; margin-top:15px; background:none; border:none; color:#999;">FECHAR</button>
     </div>
 
     <script>
         var map = L.map('map', {{ zoomControl: false, attributionControl: false }}).setView([{centro[0]}, {centro[1]}], 16);
         L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={{x}}&y={{y}}&z={{z}}').addTo(map);
 
+        var queue = [];
+
+        function addToQueue() {{
+            var input = document.getElementById('input-busca');
+            var val = input.value.trim();
+            if(val && !queue.includes(val)) {{
+                queue.push(val);
+                renderQueue();
+                input.value = "";
+                input.focus();
+            }}
+        }}
+
+        function removeFromQueue(idx) {{
+            queue.splice(idx, 1);
+            renderQueue();
+        }}
+
+        function renderQueue() {{
+            var container = document.getElementById('batch-list');
+            var btn = document.getElementById('btn-confirm-all');
+            if(queue.length > 0) {{
+                container.style.display = "flex";
+                btn.style.display = "block";
+                container.innerHTML = queue.map((item, i) => 
+                    '<div class="batch-item">' + item + '<b onclick="removeFromQueue('+i+')">✕</b></div>'
+                ).join('');
+            }} else {{
+                container.style.display = "none";
+                btn.style.display = "none";
+            }}
+        }}
+
+        function sendBatch() {{
+            if(queue.length > 0) {{
+                var param = queue.map(encodeURIComponent).join('|');
+                window.location.href = "?add_batch=" + param;
+            }}
+        }}
+
+        // --- RENDERIZAR PONTOS ---
         var pontos = {json.dumps(pontos_js)};
-        
+        function closeSheet() {{ document.getElementById('sheet').classList.remove('active'); }}
+
         pontos.forEach(function(p) {{
             var icon = L.divIcon({{
                 className: '',
@@ -193,19 +264,31 @@ mapa_html = f"""
                 iconSize: [null, 36], iconAnchor: [18, 18]
             }});
 
-            L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map).on('click', function(e) {{
+            var marker = L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map);
+            marker.on('click', function(e) {{
+                L.DomEvent.stopPropagation(e);
                 document.getElementById('s-nome').innerText = p.nome;
-                document.getElementById('s-info').innerText = p.total + (p.total > 1 ? " entregas aqui" : " entrega aqui");
+                document.getElementById('s-info').innerText = p.total + (p.total > 1 ? " entregas" : " entrega");
                 document.getElementById('s-gps').href = "https://www.google.com/maps/dir/?api=1&destination="+p.lat+","+p.lng;
                 var btnDone = document.getElementById('s-done');
-                if(p.concluido) btnDone.style.display = 'none';
-                else {{ btnDone.style.display = 'block'; btnDone.href = "?concluir=" + p.id; }}
+                btnDone.style.display = p.concluido ? 'none' : 'block';
+                btnDone.href = "?concluir=" + p.id;
                 document.getElementById('sheet').classList.add('active');
+                map.panTo([p.lat, p.lng]);
             }});
+        }});
+
+        map.on('click', closeSheet);
+        map.locate({{watch: true, enableHighAccuracy: true}});
+        var userMarker;
+        map.on('locationfound', function(e) {{
+            if (!userMarker) {{
+                userMarker = L.circleMarker(e.latlng, {{radius: 8, color: 'white', fillColor: '#4285F4', fillOpacity: 1, weight: 3}}).addTo(map);
+            }} else {{ userMarker.setLatLng(e.latlng); }}
         }});
     </script>
 </body>
 </html>
 """
 
-st.components.v1.html(mapa_html, height=750)
+st.components.v1.html(mapa_html, height=700)
