@@ -5,22 +5,24 @@ import os
 import math
 
 # =================================================================
-# 1. CONFIGURAÇÃO DE TELA
+# 1. CONFIGURAÇÃO DE TELA (UI LIMPA)
 # =================================================================
-st.set_page_config(page_title="GPS Profissional - Logística", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="GPS Profissional", layout="wide", initial_sidebar_state="collapsed")
 
+# CSS Ajustado para permitir ver a barra lateral quando necessário
 st.markdown("""
     <style>
     [data-testid="stHeader"], [data-testid="stToolbar"], footer { display: none !important; }
     .block-container { padding: 0 !important; max-width: 100% !important; margin: 0 !important; }
     iframe { width: 100vw; height: 100vh; border: none !important; }
-    /* Estilização da Sidebar para caber no celular */
-    [data-testid="stSidebar"] { background-color: #f8f9fa; min-width: 300px !important; }
+    
+    /* Estilo para a área de controles flutuante ou sidebar */
+    .stSelectbox, .stMultiSelect { background: white; border-radius: 10px; }
     </style>
 """, unsafe_allow_html=True)
 
 # =================================================================
-# 2. LOGICA DE DADOS
+# 2. LOGICA DE DADOS (PYTHON)
 # =================================================================
 FILE_SAVE = "progresso_final.json"
 
@@ -55,43 +57,35 @@ def carregar_banco():
 banco_total = carregar_banco()
 
 # =================================================================
-# 3. NOVO: FUNÇÃO DE ADIÇÃO EM MASSA
+# 3. INTERFACE DE ADIÇÃO (SIDEBAR)
 # =================================================================
 with st.sidebar:
-    st.title("📦 Gestão de Carga")
+    st.header("⚙️ Gestão de Entregas")
     
-    with st.expander("➕ ADICIONAR EM MASSA", expanded=True):
-        st.write("Cole o texto das entregas abaixo:")
-        texto_bruto = st.text_area("Ex: Quadra 648, Quadra 361...", height=150)
-        
-        if texto_bruto:
-            # Encontrar correspondências no banco de dados
-            encontrados = []
-            for nome_local in banco_total.keys():
-                # Procura se o nome do local (ou número da quadra) está no texto colado
-                if nome_local.lower() in texto_bruto.lower():
-                    encontrados.append(nome_local)
-            
-            if encontrados:
-                st.success(f"Encontrado {len(encontrados)} locais!")
-                if st.button("✅ ADICIONAR TUDO AGORA"):
-                    for item in encontrados:
-                        nid = f"{item}_{len(st.session_state.lista_pacotes)}"
-                        st.session_state.lista_pacotes.append({"id": nid, "nome": item})
-                    salvar_progresso()
-                    st.rerun()
-            else:
-                st.warning("Nenhum local reconhecido no texto.")
+    # SELEÇÃO EM MASSA
+    st.subheader("Adicionar Quadras")
+    selecionados = st.multiselect("Selecione as quadras da rota:", options=list(banco_total.keys()))
+    
+    if st.button("➕ ADICIONAR SELECIONADOS", use_container_width=True):
+        if selecionados:
+            for nome in selecionados:
+                nid = f"{nome}_{len(st.session_state.lista_pacotes)}"
+                st.session_state.lista_pacotes.append({"id": nid, "nome": nome})
+                st.session_state.ultima_pos = banco_total[nome]
+            salvar_progresso()
+            st.success(f"{len(selecionados)} locais adicionados!")
+            st.rerun()
 
     st.divider()
-    if st.button("🗑️ LIMPAR ROTA COMPLETA", use_container_width=True):
+    if st.button("🗑️ LIMPAR TUDO", type="primary", use_container_width=True):
         if os.path.exists(FILE_SAVE): os.remove(FILE_SAVE)
         st.session_state.lista_pacotes, st.session_state.entregues_id, st.session_state.ultima_pos = [], [], None
         st.rerun()
 
 # =================================================================
-# 4. PROCESSAMENTO DE URL E MAPA (MANTIDO)
+# 4. PROCESSAMENTO PARA O MAPA
 # =================================================================
+# AÇÕES VIA URL (Mantido para o botão de concluir no mapa)
 q = st.query_params
 if "concluir" in q:
     id_p = q["concluir"]
@@ -103,7 +97,7 @@ if "concluir" in q:
     st.query_params.clear()
     st.rerun()
 
-# Lógica de agrupamento para o mapa
+# Lógica de agrupamento (igual ao seu original)
 pendentes_total = [p for p in st.session_state.lista_pacotes if p['id'] not in st.session_state.entregues_id]
 proximo_id = None
 if st.session_state.ultima_pos and pendentes_total:
@@ -128,19 +122,21 @@ for nome, info in agrupado.items():
     p_ids = info["pendentes_ids"]
     esta_concluido = len(p_ids) == 0
     cor = "#28a745" if esta_concluido else ("#fd7e14" if any(pid == proximo_id for pid in p_ids) else "#dc3545")
-    
     num_match = re.findall(r'\d+', nome)
     base_txt = num_match[0] if num_match else nome[:3]
     display_txt = "✔" if esta_concluido else (f"{base_txt} x{info['total']}" if info['total'] > 1 else base_txt)
 
     pontos_js.append({
         "id": p_ids[0] if not esta_concluido else "done",
-        "lat": coords[0], "lng": coords[1], "nome": nome, 
-        "concluido": esta_concluido, "cor": cor, "txt": display_txt, "total": info['total']
+        "lat": coords[0], "lng": coords[1], "nome": nome, "total": info["total"],
+        "concluido": esta_concluido, "cor": cor, "txt": display_txt
     })
 
-# HTML Gerado
+# =================================================================
+# 5. RENDERIZAÇÃO DO MAPA
+# =================================================================
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else [-16.15, -47.96]
+
 mapa_html = f"""
 <!DOCTYPE html>
 <html>
@@ -150,42 +146,60 @@ mapa_html = f"""
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        body {{ margin: 0; padding: 0; overflow: hidden; }}
-        #map {{ height: 100vh; width: 100vw; }}
+        body {{ margin: 0; padding: 0; font-family: sans-serif; overflow: hidden; background: #eee; }}
+        #map {{ height: 100vh; width: 100vw; z-index: 1; }}
         .count-badge {{
-            position: fixed; top: 15px; right: 15px; z-index: 1000;
-            background: #333; color: white; padding: 8px 15px; border-radius: 20px; font-weight: bold;
+            position: fixed; top: 15px; left: 15px; z-index: 1000;
+            background: #333; color: white; padding: 10px 15px;
+            border-radius: 20px; font-size: 14px; font-weight: bold; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         }}
         #sheet {{
-            position: fixed; bottom: -300px; left: 0; right: 0; background: white; z-index: 2000;
-            padding: 20px; border-radius: 20px 20px 0 0; transition: bottom 0.4s; box-shadow: 0 -5px 20px rgba(0,0,0,0.2);
+            position: fixed; bottom: -300px; left: 0; right: 0;
+            background: white; z-index: 2000; padding: 20px;
+            border-radius: 20px 20px 0 0; box-shadow: 0 -5px 25px rgba(0,0,0,0.3);
+            transition: bottom 0.4s ease;
         }}
         #sheet.active {{ bottom: 0; }}
-        .btn {{ display: block; text-align: center; padding: 15px; border-radius: 10px; text-decoration: none; color: white; font-weight: bold; margin-top: 10px; }}
-        .pin {{ min-width: 36px; height: 36px; padding: 0 6px; border-radius: 18px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; border: 2px solid white; font-size: 13px; }}
+        .btn {{ display: block; width: 100%; text-align: center; padding: 16px; border-radius: 12px; text-decoration: none; color: white; font-weight: bold; margin-top: 10px; }}
+        .pin {{
+            min-width: 36px; height: 36px; padding: 0 6px; border-radius: 18px;
+            display: flex; align-items: center; justify-content: center;
+            color: white; font-weight: bold; border: 2px solid white; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3); font-size: 13px;
+        }}
     </style>
 </head>
 <body>
-    <div class="count-badge">📍 {len(pendentes_total)} Pendentes</div>
+    <div class="count-badge">📍 {len([p for p in pontos_js if not p['concluido']])} Paradas Restantes</div>
     <div id="map"></div>
     <div id="sheet">
         <div id="s-nome" style="font-size:18px; font-weight:bold;"></div>
+        <div id="s-info" style="font-size:14px; color: #666;"></div>
         <a id="s-gps" href="#" target="_blank" class="btn" style="background:#4285F4">🚀 INICIAR GPS</a>
-        <a id="s-done" href="#" target="_self" class="btn" style="background:#28a745">✅ CONCLUIR</a>
-        <button onclick="document.getElementById('sheet').classList.remove('active')" style="width:100%; border:none; background:none; color:gray; margin-top:10px;">FECHAR</button>
+        <a id="s-done" href="#" target="_self" class="btn" style="background:#28a745">✅ CONCLUIR ENTREGA</a>
+        <button onclick="document.getElementById('sheet').classList.remove('active')" style="width:100%; margin-top:15px; background:none; border:none; color:#999;">FECHAR</button>
     </div>
+
     <script>
-        var map = L.map('map', {{ zoomControl: false, attributionControl: false }}).setView([{centro[0]}, {centro[1]}], 15);
+        var map = L.map('map', {{ zoomControl: false, attributionControl: false }}).setView([{centro[0]}, {centro[1]}], 16);
         L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={{x}}&y={{y}}&z={{z}}').addTo(map);
 
         var pontos = {json.dumps(pontos_js)};
+        
         pontos.forEach(function(p) {{
-            var icon = L.divIcon({{ className: '', html: '<div class="pin" style="background:'+p.cor+'; opacity:'+(p.concluido?0.5:1)+'">'+p.txt+'</div>', iconSize: [null, 36] }});
-            L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map).on('click', function() {{
-                document.getElementById('s-nome').innerText = p.nome + " (" + p.total + " pacotes)";
+            var icon = L.divIcon({{
+                className: '',
+                html: '<div class="pin" style="background:'+p.cor+'; opacity:'+(p.concluido ? 0.6 : 1)+'">'+p.txt+'</div>',
+                iconSize: [null, 36], iconAnchor: [18, 18]
+            }});
+
+            L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map).on('click', function(e) {{
+                document.getElementById('s-nome').innerText = p.nome;
+                document.getElementById('s-info').innerText = p.total + (p.total > 1 ? " entregas aqui" : " entrega aqui");
                 document.getElementById('s-gps').href = "https://www.google.com/maps/dir/?api=1&destination="+p.lat+","+p.lng;
-                var btn = document.getElementById('s-done');
-                if(p.concluido) btn.style.display='none'; else {{ btn.style.display='block'; btn.href="?concluir="+p.id; }}
+                var btnDone = document.getElementById('s-done');
+                if(p.concluido) btnDone.style.display = 'none';
+                else {{ btnDone.style.display = 'block'; btnDone.href = "?concluir=" + p.id; }}
                 document.getElementById('sheet').classList.add('active');
             }});
         }});
@@ -193,4 +207,5 @@ mapa_html = f"""
 </body>
 </html>
 """
-st.components.v1.html(mapa_html, height=800)
+
+st.components.v1.html(mapa_html, height=750)
