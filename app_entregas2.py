@@ -45,7 +45,7 @@ if not st.session_state.lista_pacotes and os.path.exists(FILE_SAVE):
     except: pass
 
 @st.cache_data
-def carregar_banco():
+def carregar_banco(mtime): # Adicionamos mtime aqui
     try:
         with open('Lugares marcados.json', 'r', encoding='utf-8') as f:
             dados_j = json.load(f)
@@ -55,7 +55,10 @@ def carregar_banco():
         return dict(sorted(banco.items()))
     except: return {}
 
-banco_total = carregar_banco()
+# Chame a função passando a data de modificação do arquivo
+arquivo_caminho = 'Lugares marcados.json'
+mtime = os.path.getmtime(arquivo_caminho) if os.path.exists(arquivo_caminho) else 0
+banco_total = carregar_banco(mtime)
 
 # --- AÇÕES VIA URL ---
 q = st.query_params
