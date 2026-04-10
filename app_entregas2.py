@@ -3,6 +3,7 @@ import streamlit as st
 import re
 import os
 import math
+import time
 
 # =================================================================
 # 1. CONFIGURAÇÃO DE TELA (UI LIMPA)
@@ -27,7 +28,11 @@ if 'entregues_id' not in st.session_state: st.session_state.entregues_id = []
 if 'ultima_pos' not in st.session_state: st.session_state.ultima_pos = None
 
 def salvar_progresso():
-    dados = {"lista_pacotes": st.session_state.lista_pacotes, "entregues_id": st.session_state.entregues_id, "ultima_pos": st.session_state.ultima_pos}
+    dados = {
+        "lista_pacotes": st.session_state.lista_pacotes, 
+        "entregues_id": st.session_state.entregues_id, 
+        "ultima_pos": st.session_state.ultima_pos
+    }
     with open(FILE_SAVE, "w") as f: json.dump(dados, f)
 
 if not st.session_state.lista_pacotes and os.path.exists(FILE_SAVE):
@@ -52,13 +57,14 @@ def carregar_banco():
 
 banco_total = carregar_banco()
 
-# --- AÇÕES VIA URL (ADICIONAR LOTE) ---
+# --- AÇÕES VIA URL ---
 q = st.query_params
 if "add_batch" in q:
     nomes = q["add_batch"].split("|")
     for nome in nomes:
         if nome in banco_total:
-            nid = f"{nome}_{len(st.session_state.lista_pacotes)}"
+            # ID único usando timestamp para permitir duplicatas de nome
+            nid = f"{nome}_{time.time_ns()}"
             st.session_state.lista_pacotes.append({"id": nid, "nome": nome})
             st.session_state.ultima_pos = banco_total[nome]
     salvar_progresso()
@@ -81,9 +87,10 @@ if "limpar" in q:
     st.query_params.clear()
     st.rerun()
 
-# --- LÓGICA DE CÁLCULO DE PROXIMIDADE ---
+# --- LÓGICA DE PROXIMIDADE E AGRUPAMENTO ---
 pendentes_total = [p for p in st.session_state.lista_pacotes if p['id'] not in st.session_state.entregues_id]
 proximo_id = None
+
 if st.session_state.ultima_pos and pendentes_total:
     dist_min = float('inf')
     for p in pendentes_total:
@@ -98,24 +105,44 @@ for p in st.session_state.lista_pacotes:
     nome = p['nome']
     if nome not in agrupado: agrupado[nome] = {"total": 0, "pendentes_ids": []}
     agrupado[nome]["total"] += 1
-    if p['id'] not in st.session_state.entregues_id: agrupado[nome]["pendentes_ids"].append(p['id'])
+    if p['id'] not in st.session_state.entregues_id: 
+        agrupado[nome]["pendentes_ids"].append(p['id'])
 
 pontos_js = []
 for nome, info in agrupado.items():
     coords = banco_total.get(nome, (0,0))
     p_ids = info["pendentes_ids"]
     esta_concluido = len(p_ids) == 0
+    
+    # Define a cor: Verde se concluído, Laranja se for o próximo mais perto, Vermelho se pendente
     cor = "#28a745" if esta_concluido else ("#fd7e14" if any(pid == proximo_id for pid in p_ids) else "#dc3545")
+    
+    # Texto do marcador: Se tiver mais de 1, mostra "Nome xQtd"
     num_match = re.findall(r'\d+', nome)
     base_txt = num_match[0] if num_match else nome[:3]
-    display_txt = "✔" if esta_concluido else (f"{base_txt} x{info['total']}" if info['total'] > 1 else base_txt)
-    pontos_js.append({"id": p_ids[0] if not esta_concluido else "done", "lat": coords[0], "lng": coords[1], "nome": nome, "total": info['total'], "concluido": esta_concluido, "cor": cor, "txt": display_txt})
+    
+    if esta_concluido:
+        display_txt = "✔"
+    else:
+        # Se houver múltiplas entregas no mesmo lugar, mostra ex: "31 x2"
+        display_txt = f"{base_txt} x{len(p_ids)}" if len(p_ids) > 1 else base_txt
+
+    pontos_js.append({
+        "id": p_ids[0] if not esta_concluido else "done", 
+        "lat": coords[0], "lng": coords[1], 
+        "nome": nome, 
+        "total_orig": info['total'],
+        "restantes": len(p_ids),
+        "concluido": esta_concluido, 
+        "cor": cor, 
+        "txt": display_txt
+    })
 
 total_bolinhas = len(pontos_js)
 bolinhas_pendentes = len([p for p in pontos_js if not p['concluido']])
 
 # =================================================================
-# 4. HTML/JS (COM SISTEMA DE FILA)
+# 4. HTML/JS
 # =================================================================
 centro = st.session_state.ultima_pos if st.session_state.ultima_pos else [-16.15, -47.96]
 lista_opcoes_html = "".join([f'<option value="{n}">' for n in banco_total.keys()])
@@ -132,7 +159,6 @@ mapa_html = f"""
         body {{ margin: 0; padding: 0; font-family: sans-serif; overflow: hidden; background: #eee; }}
         #map {{ height: 100vh; width: 100vw; z-index: 1; }}
 
-        /* CONTAINER DE BUSCA */
         .search-container {{
             position: fixed; top: 10px; left: 10px; right: 10px; z-index: 1000;
             background: white; padding: 8px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
@@ -141,18 +167,17 @@ mapa_html = f"""
         #input-busca {{ flex: 1; border: 1px solid #ddd; padding: 12px; border-radius: 8px; font-size: 16px; outline: none; }}
         .btn-add {{ background: #007bff; color: white; border: none; padding: 0 20px; border-radius: 8px; font-size: 20px; }}
 
-        /* FILA DE ADIÇÃO (BATCH) */
         #batch-list {{ 
             display: none; flex-wrap: wrap; gap: 5px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #eee;
         }}
         .batch-item {{ 
-            background: #e9ecef; padding: 4px 10px; border-radius: 15px; font-size: 12px; 
-            display: flex; align-items: center; gap: 5px; border: 1px solid #ccc;
+            background: #f8f9fa; padding: 4px 10px; border-radius: 15px; font-size: 12px; 
+            display: flex; align-items: center; gap: 5px; border: 1px solid #007bff;
         }}
         .batch-item b {{ color: #d33; cursor: pointer; padding: 0 4px; }}
         .btn-confirm {{ 
             display: none; width: 100%; background: #28a745; color: white; border: none; 
-            padding: 10px; border-radius: 8px; font-weight: bold; margin-top: 8px; cursor: pointer;
+            padding: 12px; border-radius: 8px; font-weight: bold; margin-top: 8px; cursor: pointer;
         }}
 
         .count-badge {{
@@ -174,11 +199,14 @@ mapa_html = f"""
         }}
         #sheet.active {{ bottom: 0; }}
         .btn-row {{ display: flex; gap: 10px; margin-top: 15px; }}
-        .btn {{ flex: 1; text-align: center; padding: 16px; border-radius: 12px; text-decoration: none; color: white; font-weight: bold; }}
+        .btn {{ flex: 1; text-align: center; padding: 16px; border-radius: 12px; text-decoration: none; color: white; font-weight: bold; font-size: 14px; }}
+        
         .pin {{
-            min-width: 36px; height: 36px; padding: 0 6px; border-radius: 18px;
+            min-width: 38px; height: 38px; padding: 0 8px; border-radius: 19px;
             display: flex; align-items: center; justify-content: center;
             color: white; font-weight: bold; border: 2px solid white; font-size: 13px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            white-space: nowrap;
         }}
     </style>
 </head>
@@ -191,22 +219,22 @@ mapa_html = f"""
             <button class="btn-add" onclick="addToQueue()">➕</button>
         </div>
         <div id="batch-list"></div>
-        <button id="btn-confirm-all" class="btn-confirm" onclick="sendBatch()">CONFIRMAR TODOS</button>
+        <button id="btn-confirm-all" class="btn-confirm" onclick="sendBatch()">CONFIRMAR PEDIDOS</button>
     </div>
 
-    <div class="count-badge">📍 {bolinhas_pendentes} / {total_bolinhas}</div>
+    <div class="count-badge">📍 {bolinhas_pendentes} locais restantes</div>
     <button class="btn-clear" onclick="if(confirm('Limpar tudo?')) window.location.href='?limpar=1'">🗑️</button>
 
     <div id="map"></div>
 
     <div id="sheet">
         <div id="s-nome" style="font-size:18px; font-weight:bold;">Local</div>
-        <div id="s-info" style="font-size:14px; color: #666;"></div>
+        <div id="s-info" style="font-size:14px; color: #666; margin-top: 4px;"></div>
         <div class="btn-row">
-            <a id="s-gps" href="#" target="_blank" class="btn" style="background:#4285F4">🚀 GPS</a>
-            <a id="s-done" href="#" target="_self" class="btn" style="background:#28a745">✅ CONCLUIR</a>
+            <a id="s-gps" href="#" target="_blank" class="btn" style="background:#4285F4">🚀 GOOGLE MAPS</a>
+            <a id="s-done" href="#" target="_self" class="btn" style="background:#28a745">✅ CONCLUIR 1</a>
         </div>
-        <button onclick="closeSheet()" style="width:100%; margin-top:15px; background:none; border:none; color:#999;">FECHAR</button>
+        <button onclick="closeSheet()" style="width:100%; margin-top:15px; background:none; border:none; color:#999; font-size: 14px;">FECHAR</button>
     </div>
 
     <script>
@@ -218,7 +246,8 @@ mapa_html = f"""
         function addToQueue() {{
             var input = document.getElementById('input-busca');
             var val = input.value.trim();
-            if(val && !queue.includes(val)) {{
+            // Removido a trava de duplicados: pode adicionar a mesma quadra várias vezes
+            if(val) {{
                 queue.push(val);
                 renderQueue();
                 input.value = "";
@@ -261,24 +290,32 @@ mapa_html = f"""
             var icon = L.divIcon({{
                 className: '',
                 html: '<div class="pin" style="background:'+p.cor+'; opacity:'+(p.concluido ? 0.6 : 1)+'">'+p.txt+'</div>',
-                iconSize: [null, 36], iconAnchor: [18, 18]
+                iconSize: [null, 38], iconAnchor: [19, 19]
             }});
 
             var marker = L.marker([p.lat, p.lng], {{icon: icon}}).addTo(map);
             marker.on('click', function(e) {{
                 L.DomEvent.stopPropagation(e);
                 document.getElementById('s-nome').innerText = p.nome;
-                document.getElementById('s-info').innerText = p.total + (p.total > 1 ? " entregas" : " entrega");
+                
+                var infoTxt = p.concluido ? "Todas entregues" : (p.restantes + " pendente(s) neste local");
+                document.getElementById('s-info').innerText = infoTxt;
+                
                 document.getElementById('s-gps').href = "https://www.google.com/maps/dir/?api=1&destination="+p.lat+","+p.lng;
+                
                 var btnDone = document.getElementById('s-done');
                 btnDone.style.display = p.concluido ? 'none' : 'block';
                 btnDone.href = "?concluir=" + p.id;
+                btnDone.innerText = p.restantes > 1 ? "✅ CONCLUIR 1 DE " + p.restantes : "✅ CONCLUIR";
+                
                 document.getElementById('sheet').classList.add('active');
                 map.panTo([p.lat, p.lng]);
             }});
         }});
 
         map.on('click', closeSheet);
+        
+        // Localização do usuário
         map.locate({{watch: true, enableHighAccuracy: true}});
         var userMarker;
         map.on('locationfound', function(e) {{
