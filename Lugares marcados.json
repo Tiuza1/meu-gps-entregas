@@ -560,7 +560,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 06 Pix"
+        "name": "Q 6 Pix"
       },
       "type": "Feature"
     },
@@ -626,7 +626,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 09 Pix"
+        "name": "Q 9 Pix"
       },
       "type": "Feature"
     },
@@ -1926,7 +1926,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 48 PiX"
+        "name": "Q 48"
       },
       "type": "Feature"
     },
@@ -2057,7 +2057,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 379"
+        "name": "Q 379 P8"
       },
       "type": "Feature"
     },
@@ -2806,7 +2806,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 381"
+        "name": "Q 381 Pix"
       },
       "type": "Feature"
     },
@@ -3594,7 +3594,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "511"
+        "name": "511 Pix"
       },
       "type": "Feature"
     },
@@ -3923,7 +3923,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 04 Pix"
+        "name": "Q 4 Pix"
       },
       "type": "Feature"
     },
@@ -4881,7 +4881,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 131 PiX"
+        "name": "Q 131 (L18) PiX"
       },
       "type": "Feature"
     },
@@ -5708,7 +5708,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 131 PiX"
+        "name": "Q 131 (L12) PiX"
       },
       "type": "Feature"
     },
@@ -8037,7 +8037,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 73"
+        "name": "Q 73 (L7) Pix"
       },
       "type": "Feature"
     },
@@ -11125,7 +11125,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 01 Pix"
+        "name": "Q 1 Pix"
       },
       "type": "Feature"
     },
@@ -13321,7 +13321,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 131 PiX"
+        "name": "Q 131 (L20) PiX"
       },
       "type": "Feature"
     },
@@ -14239,7 +14239,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 349"
+        "name": "Q 349 Pix"
       },
       "type": "Feature"
     },
@@ -15670,7 +15670,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 73"
+        "name": "Q 73 (L50) Pix"
       },
       "type": "Feature"
     },
@@ -16307,7 +16307,7 @@
       },
       "properties": {
         "address": "R. 57 - Parque Alvorada II, Luziânia - GO, Brasil",
-        "name": "Q 83"
+        "name": "Q 83 Pix"
       },
       "type": "Feature"
     },
@@ -18809,7 +18809,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 334"
+        "name": "Q 334 Pix"
       },
       "type": "Feature"
     },
@@ -20401,6 +20401,19 @@
     {
       "geometry": {
         "coordinates": [
+          -47.9478369,
+          -16.1570084
+        ],
+        "type": "Point"
+      },
+      "properties": {
+        "name": "49a"
+      },
+      "type": "Feature"
+    },
+    {
+      "geometry": {
+        "coordinates": [
           -47.961009,
           -16.1782239
         ],
@@ -20538,7 +20551,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 351"
+        "name": "Q 351 Pix"
       },
       "type": "Feature"
     },
@@ -20735,7 +20748,7 @@
       },
       "properties": {
         "address": "12 - Parque Estrela Dalva IX e X, Luziânia - GO, 72812-383, Brasil",
-        "name": "Q 07 Pix"
+        "name": "Q 7 Pix"
       },
       "type": "Feature"
     },
@@ -21010,7 +21023,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 131 Lt 34a"
+        "name": "Q 131 Lt 34a Pix"
       },
       "type": "Feature"
     },
@@ -21810,7 +21823,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 286 Talves"
+        "name": "Q 286 Pix"
       },
       "type": "Feature"
     },
@@ -22271,7 +22284,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "360"
+        "name": "360 P8"
       },
       "type": "Feature"
     },
@@ -23072,7 +23085,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 429"
+        "name": "Q 429 Pix"
       },
       "type": "Feature"
     },
@@ -23111,7 +23124,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 219"
+        "name": "Q 219 (L32) Pix"
       },
       "type": "Feature"
     },
@@ -23297,7 +23310,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 336"
+        "name": "Q 336 Pix"
       },
       "type": "Feature"
     },
@@ -23509,7 +23522,7 @@
       },
       "properties": {
         "address": "R. 53, 10 - Parque Estrela Dalva, Luziânia - GO, 72812-383, Brasil",
-        "name": "Q 03 Pix"
+        "name": "Q 3 Pix"
       },
       "type": "Feature"
     },
@@ -25455,7 +25468,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 288"
+        "name": "Q 288 Pix"
       },
       "type": "Feature"
     },
@@ -25572,7 +25585,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 08 Pix"
+        "name": "Q 8 Pix"
       },
       "type": "Feature"
     },
@@ -26173,7 +26186,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 367"
+        "name": "Q 367 P8"
       },
       "type": "Feature"
     },
@@ -26984,7 +26997,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 219"
+        "name": "Q 219 L9 Pix"
       },
       "type": "Feature"
     },
@@ -28498,7 +28511,7 @@
       },
       "properties": {
         "address": "R. Trinta e Seis, 37 - Parque Estrela Dalva IX e X, Luziânia - GO, 72853-055, Brasil",
-        "name": "Q 73 Pix"
+        "name": "Q 73 (L40) Pix"
       },
       "type": "Feature"
     },
@@ -30877,7 +30890,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 514 L1/8"
+        "name": "Q 514 L1/8 Pix"
       },
       "type": "Feature"
     },
@@ -31350,7 +31363,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 266"
+        "name": "Q 266 Pix"
       },
       "type": "Feature"
     },
@@ -32806,7 +32819,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 380"
+        "name": "Q 380 Pix"
       },
       "type": "Feature"
     },
@@ -33752,7 +33765,7 @@
       },
       "properties": {
         "address": "R. 33, 16 - Parque Estrela Dalva IX e X, Luziânia - GO, Brasil",
-        "name": "Q 73"
+        "name": "Q 73 (L35) Pix"
       },
       "type": "Feature"
     },
@@ -36665,7 +36678,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 512"
+        "name": "Q 512 Pix"
       },
       "type": "Feature"
     },
@@ -36771,7 +36784,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 02 Pix"
+        "name": "Q 2 Pix"
       },
       "type": "Feature"
     },
@@ -38977,7 +38990,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 84"
+        "name": "Q 84 Pix"
       },
       "type": "Feature"
     },
@@ -40421,7 +40434,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q380"
+        "name": "Q 380 P8"
       },
       "type": "Feature"
     },
@@ -41315,7 +41328,7 @@
       },
       "properties": {
         "address": "R. 1 - Parque Estrela Dalva, Luziânia - GO, 72853-005, Brasil",
-        "name": "Q 05 Pix"
+        "name": "Q 5 Pix"
       },
       "type": "Feature"
     },
@@ -42285,7 +42298,7 @@
         "type": "Point"
       },
       "properties": {
-        "name": "Q 219 Pix"
+        "name": "Q 219 (L22) Pix"
       },
       "type": "Feature"
     },
