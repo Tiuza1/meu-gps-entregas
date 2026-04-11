@@ -4,9 +4,12 @@ import urllib.parse
 import os
 
 # =================================================================
-# 1. CONFIGURAÇÃO VISUAL (FOCO EM AGILIDADE E BATERIA)
+# 1. CONFIGURAÇÃO VISUAL E PERSISTÊNCIA
 # =================================================================
-st.set_page_config(page_title="PAINEL J&T", layout="centered")
+st.set_page_config(page_title="PAINEL J&T PRO", layout="centered")
+
+# Nome do arquivo que ficará guardado no servidor
+ARQUIVO_SALVO = "banco_rota.csv"
 
 st.markdown("""
     <style>
@@ -67,23 +70,40 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-if 'dados' not in st.session_state: st.session_state.dados = None
+# =================================================================
+# 2. LÓGICA DE PERSISTÊNCIA DE ARQUIVO
+# =================================================================
 
 def limpar_numero(tel):
     num = ''.join(filter(str.isdigit, str(tel)))
     if not num.startswith('55'): num = '55' + num
     return num
 
+# Tenta carregar o arquivo que já está no servidor
+def carregar_dados_salvos():
+    if os.path.exists(ARQUIVO_SALVO):
+        try:
+            return pd.read_csv(ARQUIVO_SALVO).to_dict('records')
+        except:
+            return None
+    return None
+
+if 'dados' not in st.session_state:
+    st.session_state.dados = carregar_dados_salvos()
+
 # =================================================================
-# 3. TELA DE CARREGAMENTO / APP
+# 3. INTERFACE
 # =================================================================
+
 if st.session_state.dados is None:
-    st.markdown("<h2 style='color:white; text-align:center;'>📦 Iniciar Rota</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color:white; text-align:center;'>📦 Iniciar Nova Rota</h2>", unsafe_allow_html=True)
     arquivo = st.file_uploader("Suba o CSV do computador", type=["csv"], label_visibility="collapsed")
     if arquivo:
         df = pd.read_csv(arquivo)
         # Ordenar por Quadra/Local
         df = df.sort_values(by=['Local', 'Nome'], ascending=[True, True])
+        # Salva o arquivo no disco do servidor para persistência
+        df.to_csv(ARQUIVO_SALVO, index=False)
         st.session_state.dados = df.to_dict('records')
         st.rerun()
 else:
@@ -92,7 +112,9 @@ else:
     with col_lupa:
         busca = st.text_input("🔍 Buscar nome ou pacote...", placeholder="Ex: Jose ou 4082")
     with col_reset:
-        if st.button("🗑️", help="Limpar lista"):
+        if st.button("🗑️", help="Apagar arquivo salvo"):
+            if os.path.exists(ARQUIVO_SALVO):
+                os.remove(ARQUIVO_SALVO)
             st.session_state.dados = None
             st.rerun()
 
@@ -114,11 +136,9 @@ else:
         id_pacote = str(item['Pacote'])
         tel = limpar_numero(item['Telefone'])
         
-        # Identificação de APARTAMENTO
         eh_ap = any(x in (local + nome_full) for x in ['AP', 'APT', 'BL', 'BLO', 'CONDOMINIO'])
         card_class = "prioridade-ap" if eh_ap else ""
 
-        # Layout do Card
         st.markdown(f"""
             <div class="card {card_class}">
                 <div class="nome">{nome_full}</div>
@@ -127,14 +147,9 @@ else:
             </div>
         """, unsafe_allow_html=True)
 
-        # MENSAGENS
-        # 1. Mensagem de Chegada
         msg_chegando = urllib.parse.quote(f"Olá {p_nome}, sou da J&T. Estou chegando no seu endereço ({local}). Tem alguém pra receber a entrega agora?")
-        
-        # 2. Mensagem de Rota (Padrão)
         msg_rota = urllib.parse.quote(f"Oi {p_nome}, sou da J&T. Seu pacote para a *{local}* está na rota de hoje. Passo até às 17h. Consegue receber?")
 
-        # Botões Customizados em HTML para evitar lentidão do Streamlit
         st.markdown(f"""
             <div class="btn-chegando">
                 <a href="https://wa.me/{tel}?text={msg_chegando}" target="_blank">🚀 ESTOU CHEGANDO</a>
