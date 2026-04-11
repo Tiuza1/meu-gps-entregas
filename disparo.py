@@ -147,8 +147,8 @@ else:
             </div>
         """, unsafe_allow_html=True)
 
-        msg_chegando = urllib.parse.quote(f"Olá {p_nome}, sou da J&T. Estou chegando no seu endereço ({local}). Tem alguém pra receber a entrega agora?")
-        msg_rota = urllib.parse.quote(f"Oi {p_nome}, sou da J&T. Seu pacote para a *{local}* está na rota de hoje. Passo até às 17h. Consegue receber?")
+        msg_chegando = urllib.parse.quote(f"Olá {p_nome}, Estou chegando no seu endereço ({local}). Tem alguém pra receber a entrega agora?")
+        msg_rota = urllib.parse.quote(f"Oi {p_nome}, Seu pacote para a *{local}* está na rota de hoje. Passo até às 17h Ok?")
 
         st.markdown(f"""
             <div class="btn-chegando">
