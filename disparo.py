@@ -42,10 +42,10 @@ st.markdown("""
     .local { color: #4285f4; font-size: 16px; font-weight: bold; margin-top: 2px; }
     .pacote-id { color: #666; font-size: 12px; font-family: monospace; margin-top: 4px; }
     
-    /* BOTÃO ESTOU CHEGANDO (AZUL) */
-    .btn-chegando > a {
+    /* BOTÃO ABRIR WHATSAPP (VERDE - TOPO) */
+    .btn-wpp > a {
         display: flex; align-items: center; justify-content: center;
-        background-color: #007bff !important;
+        background-color: #25D366 !important;
         color: white !important;
         height: 55px;
         border-radius: 12px;
@@ -55,10 +55,10 @@ st.markdown("""
         margin-top: 10px;
     }
 
-    /* BOTÃO AVISAR ROTA (VERDE) */
-    .btn-rota > a {
+    /* BOTÃO ESTOU CHEGANDO (AZUL - MEIO) */
+    .btn-chegando > a {
         display: flex; align-items: center; justify-content: center;
-        background-color: #25D366 !important;
+        background-color: #007bff !important;
         color: white !important;
         height: 45px;
         border-radius: 12px;
@@ -68,10 +68,10 @@ st.markdown("""
         margin-top: 8px;
     }
 
-    /* BOTÃO APENAS ABRIR WHATSAPP (CINZA) */
-    .btn-wpp > a {
+    /* BOTÃO AVISAR ROTA (VERMELHO - FIM) */
+    .btn-rota > a {
         display: flex; align-items: center; justify-content: center;
-        background-color: #333333 !important;
+        background-color: #ff4b4b !important;
         color: white !important;
         height: 45px;
         border-radius: 12px;
@@ -79,7 +79,6 @@ st.markdown("""
         font-weight: bold;
         font-size: 16px;
         margin-top: 8px;
-        border: 1px solid #444;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -164,15 +163,16 @@ else:
         msg_chegando = urllib.parse.quote(f"Olá {p_nome}, Estou chegando no seu endereço ({local}). Tem alguém pra receber a entrega agora?")
         msg_rota = urllib.parse.quote(f"Oi {p_nome}, Seu pacote para a *{local}* está na rota de hoje. Passo até às 17h Ok?")
 
+        # ORDEM DOS BOTÕES ATUALIZADA
         st.markdown(f"""
+            <div class="btn-wpp">
+                <a href="https://wa.me/{tel}" target="_blank">💬 ABRIR WHATSAPP</a>
+            </div>
             <div class="btn-chegando">
                 <a href="https://wa.me/{tel}?text={msg_chegando}" target="_blank">🚀 ESTOU CHEGANDO</a>
             </div>
             <div class="btn-rota">
                 <a href="https://wa.me/{tel}?text={msg_rota}" target="_blank">📅 AVISAR ROTA</a>
-            </div>
-            <div class="btn-wpp">
-                <a href="https://wa.me/{tel}" target="_blank">💬 ABRIR WHATSAPP</a>
             </div>
             <div style="margin-bottom: 25px;"></div>
         """, unsafe_allow_html=True)
