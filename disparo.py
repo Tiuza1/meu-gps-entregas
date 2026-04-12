@@ -67,6 +67,20 @@ st.markdown("""
         font-size: 16px;
         margin-top: 8px;
     }
+
+    /* BOTÃO APENAS ABRIR WHATSAPP (CINZA) */
+    .btn-wpp > a {
+        display: flex; align-items: center; justify-content: center;
+        background-color: #333333 !important;
+        color: white !important;
+        height: 45px;
+        border-radius: 12px;
+        text-decoration: none;
+        font-weight: bold;
+        font-size: 16px;
+        margin-top: 8px;
+        border: 1px solid #444;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -156,6 +170,9 @@ else:
             </div>
             <div class="btn-rota">
                 <a href="https://wa.me/{tel}?text={msg_rota}" target="_blank">📅 AVISAR ROTA</a>
+            </div>
+            <div class="btn-wpp">
+                <a href="https://wa.me/{tel}" target="_blank">💬 ABRIR WHATSAPP</a>
             </div>
             <div style="margin-bottom: 25px;"></div>
         """, unsafe_allow_html=True)
