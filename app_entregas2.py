@@ -111,30 +111,32 @@ for p in st.session_state.lista_pacotes:
     if p['id'] not in st.session_state.entregues_id: 
         agrupado[nome]["pendentes_ids"].append(p['id'])
 
+# --- REESCREVA ESSE BLOCO INTEIRO ---
 pontos_js = []
 for nome, info in agrupado.items():
     coords = banco_total.get(nome, (0,0))
     p_ids = info["pendentes_ids"]
+    
+    # Esta é a linha que estava faltando ou abaixo do "if"
     esta_concluido = len(p_ids) == 0
     
-    # NOVA LÓGICA DE CORES:
-if esta_concluido:
-    cor = "#28a745"  # Verde (Concluído)
-elif any(pid == proximo_id for pid in p_ids):
-    cor = "#fd7e14"  # Laranja (O mais próximo de você agora)
-elif len(p_ids) > 1:
-    cor = "#007bff"  # Azul (Mais de uma entrega no mesmo local)
-else:
-    cor = "#dc3545"  # Vermelho (Pendente único)
+    # Define a cor com a nova regra do Azul para repetidos
+    if esta_concluido:
+        cor = "#28a745"  # Verde
+    elif any(pid == proximo_id for pid in p_ids):
+        cor = "#fd7e14"  # Laranja (o mais próximo agora)
+    elif len(p_ids) > 1:
+        cor = "#007bff"  # AZUL (entregas repetidas/múltiplas)
+    else:
+        cor = "#dc3545"  # Vermelho (pendente único)
     
-    # Texto do marcador: Se tiver mais de 1, mostra "Nome xQtd"
+    # Texto do marcador
     num_match = re.findall(r'\d+', nome)
     base_txt = num_match[0] if num_match else nome[:3]
     
     if esta_concluido:
         display_txt = "✔"
     else:
-        # Se houver múltiplas entregas no mesmo lugar, mostra ex: "31 x2"
         display_txt = f"{base_txt} x{len(p_ids)}" if len(p_ids) > 1 else base_txt
 
     pontos_js.append({
@@ -147,6 +149,7 @@ else:
         "cor": cor, 
         "txt": display_txt
     })
+# ------------------------------------
 
 total_bolinhas = len(pontos_js)
 bolinhas_pendentes = len([p for p in pontos_js if not p['concluido']])
