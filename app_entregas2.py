@@ -117,8 +117,15 @@ for nome, info in agrupado.items():
     p_ids = info["pendentes_ids"]
     esta_concluido = len(p_ids) == 0
     
-    # Define a cor: Verde se concluído, Laranja se for o próximo mais perto, Vermelho se pendente
-    cor = "#28a745" if esta_concluido else ("#fd7e14" if any(pid == proximo_id for pid in p_ids) else "#dc3545")
+    # NOVA LÓGICA DE CORES:
+if esta_concluido:
+    cor = "#28a745"  # Verde (Concluído)
+elif any(pid == proximo_id for pid in p_ids):
+    cor = "#fd7e14"  # Laranja (O mais próximo de você agora)
+elif len(p_ids) > 1:
+    cor = "#007bff"  # Azul (Mais de uma entrega no mesmo local)
+else:
+    cor = "#dc3545"  # Vermelho (Pendente único)
     
     # Texto do marcador: Se tiver mais de 1, mostra "Nome xQtd"
     num_match = re.findall(r'\d+', nome)
