@@ -214,7 +214,6 @@ if "limpar" in q:
 
 
 # ── CSV import isolado (fragment evita re-render do mapa ao fazer upload) ──
-@st.fragment
 def csv_section():
     with st.expander("📦 Importar Planilha de Entregas (CSV)", expanded=False):
         arquivo = st.file_uploader("CSV do Extrator Pro", type=["csv"])
