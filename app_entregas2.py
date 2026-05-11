@@ -344,7 +344,7 @@ mapa_html = f"""<!DOCTYPE html>
 <style>
 *{{box-sizing:border-box}}
 body{{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;overflow:hidden;background:#1a1a2e;-webkit-font-smoothing:antialiased}}
-#map{{height:100vh;width:100vw;z-index:1}}
+#map{{height:100vh;width:100vw;z-index:1;filter:invert(90%) hue-rotate(180deg) brightness(95%) contrast(90%)}}
 
 /* cluster escuro */
 .marker-cluster-small,.marker-cluster-medium,.marker-cluster-large{{background:rgba(0,102,255,.25)!important}}
