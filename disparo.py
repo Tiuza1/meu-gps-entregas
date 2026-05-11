@@ -9,6 +9,30 @@ import unicodedata
 # =================================================================
 st.set_page_config(page_title="PAINEL J&T PRO", layout="centered")
 
+st.markdown("""
+<style>
+body, .stApp {
+  background-color: #1a1a2e !important;
+  color: #ffffff !important;
+}
+div[data-testid="stVerticalBlock"] {
+  background-color: #16213e !important;
+  border-radius: 16px !important;
+  border: 1px solid #2d2d44 !important;
+}
+input, textarea {
+  background-color: #1a1a2e !important;
+  color: #ffffff !important;
+  border: 1px solid #2d2d44 !important;
+  border-radius: 12px !important;
+}
+.stButton button {
+  border-radius: 12px !important;
+  font-weight: 700 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # Nome do arquivo que ficará guardado no servidor
 ARQUIVO_SALVO = "banco_rota.csv"
 
