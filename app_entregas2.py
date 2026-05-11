@@ -403,6 +403,7 @@ body{{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Inter','S
 /* pin minimalista */
 .pin{{min-width:26px;height:26px;padding:0 6px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.93);color:#1a1a2e;font-weight:800;border:2px solid #ccc;font-size:11px;white-space:nowrap;letter-spacing:-.3px}}
 .leaflet-marker-icon.marker-hidden,.leaflet-marker-shadow.marker-hidden{{opacity:0!important;transform:scale(.35)!important;pointer-events:none}}
+.osm-inv{{filter:invert(1) hue-rotate(180deg);}}
 </style>
 </head>
 <body>
@@ -449,8 +450,8 @@ const pontos = {json.dumps(pontos_js, ensure_ascii=False)};
 const map = L.map('map', {{zoomControl:false, attributionControl:false}})
              .setView([{centro[0]}, {centro[1]}], {zoom});
 
-L.tileLayer('https://{{s}}.basemaps.cartocdn.com/rastertiles/voyager/{{z}}/{{x}}/{{y}}{{r}}.png', {{
-  subdomains: ['a','b','c','d'], maxZoom: 19
+L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+  subdomains: ['a','b','c'], maxZoom: 19, className: 'osm-inv'
 }}).addTo(map);
 
 setTimeout(() => map.invalidateSize(), 300);
