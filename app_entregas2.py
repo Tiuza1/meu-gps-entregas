@@ -10,6 +10,8 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 st.set_page_config(page_title="GPS Entregas", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
 <style>
@@ -19,7 +21,7 @@ iframe{width:100vw;height:100vh;border:none!important}
 </style>
 """, unsafe_allow_html=True)
 
-FILE_SAVE  = "progresso_final.json"
+FILE_SAVE  = os.path.join(BASE_DIR, "progresso_final.json")
 DEFAULT_CENTER = [-16.15, -47.96]
 DEFAULT_ZOOM   = 16
 
@@ -73,7 +75,8 @@ if not st.session_state.lista_pacotes and os.path.exists(FILE_SAVE):
 # ── banco de quadras (cached por mtime) ───────────────────────────────────
 @st.cache_data
 def carregar_banco(mtime):
-    for arq in ("Lugares marcados.json", "Lugares-marcados.json"):
+    for arq in (os.path.join(BASE_DIR, "Lugares marcados.json"),
+                os.path.join(BASE_DIR, "Lugares-marcados.json")):
         if not os.path.exists(arq):
             continue
         try:
@@ -89,7 +92,9 @@ def carregar_banco(mtime):
             pass
     return {}
 
-_arq = "Lugares marcados.json" if os.path.exists("Lugares marcados.json") else "Lugares-marcados.json"
+_arq = (os.path.join(BASE_DIR, "Lugares marcados.json")
+        if os.path.exists(os.path.join(BASE_DIR, "Lugares marcados.json"))
+        else os.path.join(BASE_DIR, "Lugares-marcados.json"))
 _mtime = os.path.getmtime(_arq) if os.path.exists(_arq) else 0
 banco_total = carregar_banco(_mtime)
 
@@ -129,7 +134,7 @@ def processar_csv(csv_bytes: bytes, banco_mtime: float):
         sufixo     = int(m_cep.group(2))
 
         if prefixo in ("72853", "72856"):
-            padrao, amig = r"p[\.\s]*i*x+", "Parque 9 ou 10"
+            padrao, amig = r"p[\.\s]*[il][\s]*x", "Parque 9 ou 10"
         elif prefixo == "72859":
             if sufixo <= 500:
                 padrao, amig = r"(p[\.\s]*8|p[\.\s]*v\s*i{3})", "Mansões Parque 8"
@@ -140,7 +145,16 @@ def processar_csv(csv_bytes: bytes, banco_mtime: float):
             continue
 
         regex = rf"^Q\s*0*{numero}\s+{padrao}$"
-        chave = next((k for k in banco if re.match(regex, k, re.IGNORECASE)), "")
+
+        # DEBUG — remover após diagnóstico
+        print(f"\n[DEBUG] local='{local}' | numero='{numero}' | padrao='{padrao}'")
+        print(f"[DEBUG] regex gerado: {regex}")
+        print(f"[DEBUG] primeiras 10 chaves do banco: {list(banco.keys())[:10]}")
+        matches_parciais = [k for k in banco if re.search(numero, k)]
+        print(f"[DEBUG] chaves que contêm '{numero}': {matches_parciais[:10]}")
+
+        chave = next((k for k in banco if re.match(regex, k.strip(), re.IGNORECASE)), "")
+        print(f"[DEBUG] chave encontrada: '{chave}'")
 
         if chave:
             ok.append({"quadra_mapa": chave, "nome_cli": nome,
@@ -343,8 +357,8 @@ mapa_html = f"""<!DOCTYPE html>
 <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
 <style>
 *{{box-sizing:border-box}}
-body{{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;overflow:hidden;background:#1a1a2e;-webkit-font-smoothing:antialiased}}
-#map{{height:100vh;width:100vw;z-index:1}}
+body{{margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',sans-serif;overflow:hidden;background:#e8e4df;-webkit-font-smoothing:antialiased}}
+#map{{height:100vh;width:100vw;z-index:1;background-color:#1a1a2e!important}}
 
 /* cluster escuro */
 .marker-cluster-small,.marker-cluster-medium,.marker-cluster-large{{background:rgba(0,102,255,.25)!important}}
@@ -449,8 +463,11 @@ const pontos = {json.dumps(pontos_js, ensure_ascii=False)};
 const map = L.map('map', {{zoomControl:false, attributionControl:false}})
              .setView([{centro[0]}, {centro[1]}], {zoom});
 
-L.tileLayer('https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png', {{
-  subdomains: ['a','b','c','d'], maxZoom: 19
+const tilesPane = map.createPane('tilesPane');
+tilesPane.style.zIndex = 200;
+tilesPane.style.filter = 'invert(100%) hue-rotate(180deg) brightness(0.95) contrast(1.1)';
+L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+  subdomains: ['a','b','c'], maxZoom: 19, pane: 'tilesPane'
 }}).addTo(map);
 
 setTimeout(() => map.invalidateSize(), 300);
