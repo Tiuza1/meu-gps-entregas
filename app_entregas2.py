@@ -449,7 +449,7 @@ const pontos = {json.dumps(pontos_js, ensure_ascii=False)};
 const map = L.map('map', {{zoomControl:false, attributionControl:false}})
              .setView([{centro[0]}, {centro[1]}], {zoom});
 
-L.tileLayer('https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png', {{
+L.tileLayer('https://{{s}}.basemaps.cartocdn.com/rastertiles/voyager/{{z}}/{{x}}/{{y}}{{r}}.png', {{
   subdomains: ['a','b','c','d'], maxZoom: 19
 }}).addTo(map);
 
