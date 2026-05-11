@@ -1,2 +1,0 @@
-cd "C:\EXTRATOR DE CLIENTE"
-& "g:/RAG/faculdade/Winpython/WPy64-31241/python-3.12.4.amd64/python.exe" -m streamlit run ".\app_entregas2_perpexty.py"

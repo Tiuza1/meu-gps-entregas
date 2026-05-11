@@ -1,5 +1,0 @@
-REGRAS PARA A RESPOSTA:
-Altere ESTRITAMENTE o que foi pedido.
-NÃO modifique variáveis, lógicas, comentários ou formatação de partes que não têm relação com o pedido.
-Me passe o codigo atualizado mas somente com as alterações pedido, nada de refazer o codigo todo.
-Use ... (resto do código) ... para representar as partes que você não alterou.
