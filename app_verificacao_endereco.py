@@ -30,11 +30,28 @@ GH_HEADERS   = {
     "Accept": "application/vnd.github.v3+json",
 }
 
-# ── Leitura do CSV do GitHub ──────────────────────────────────────────────
+# ── Detecção de ambiente ──────────────────────────────────────────────────
+import os
+LOCAL_CSV = CSV_PATH  # mesmo nome, lido do diretório de trabalho
+
+def _modo_local():
+    """Retorna True se consegue usar o arquivo local (não precisa de GitHub API)."""
+    return os.path.exists(LOCAL_CSV)
+
+# ── Leitura do CSV ────────────────────────────────────────────────────────
 @st.cache_data(ttl=60)
 def carregar_resolvidos():
+    if _modo_local():
+        df = pd.read_csv(LOCAL_CSV, dtype=str).fillna("")
+        return df, "local"
+    # Streamlit Cloud: busca via GitHub API
     url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{CSV_PATH}"
-    r = requests.get(url, headers=GH_HEADERS, timeout=10)
+    try:
+        r = requests.get(url, headers=GH_HEADERS, timeout=10)
+    except Exception as e:
+        st.error(f"Sem acesso ao GitHub: {e}")
+        return pd.DataFrame(columns=["telefone_e164","telefone_digits","nome",
+                                      "endereco_resolvido","observacoes","data_adicionado"]), None
     if r.status_code == 200:
         conteudo = base64.b64decode(r.json()["content"]).decode("utf-8")
         sha = r.json()["sha"]
@@ -43,7 +60,7 @@ def carregar_resolvidos():
     return pd.DataFrame(columns=["telefone_e164","telefone_digits","nome",
                                   "endereco_resolvido","observacoes","data_adicionado"]), None
 
-# ── Gravação de novo registro via GitHub API ──────────────────────────────
+# ── Gravação de novo registro ─────────────────────────────────────────────
 def salvar_resolvido(df, sha, tel_e164, tel_digits, nome):
     nova_linha = {
         "telefone_e164":  tel_e164,
@@ -54,6 +71,13 @@ def salvar_resolvido(df, sha, tel_e164, tel_digits, nome):
         "data_adicionado": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
     df_novo = pd.concat([df, pd.DataFrame([nova_linha])], ignore_index=True)
+
+    if sha == "local":
+        # Modo local: grava direto no disco
+        df_novo.to_csv(LOCAL_CSV, index=False, encoding="utf-8")
+        return True, df_novo
+
+    # Modo cloud: GitHub API
     csv_bytes = base64.b64encode(df_novo.to_csv(index=False).encode("utf-8")).decode("utf-8")
     url  = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{CSV_PATH}"
     body = {"message": f"update: resolvido {tel_e164}", "content": csv_bytes, "branch": BRANCH}
