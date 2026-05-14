@@ -1,0 +1,223 @@
+import streamlit as st
+import pandas as pd
+import urllib.parse
+import re
+import requests
+import base64
+import io
+from datetime import datetime
+
+st.set_page_config(page_title="Endereços Incompletos", layout="centered", initial_sidebar_state="collapsed")
+
+st.markdown("""
+<style>
+[data-testid="stHeader"],[data-testid="stToolbar"],footer{display:none!important}
+body,.stApp{background-color:#1a1a2e!important;color:#fff!important}
+.block-container{padding:16px!important;max-width:600px!important}
+input,textarea{background-color:#16213e!important;color:#fff!important;border:1px solid #2d2d44!important;border-radius:10px!important}
+.stButton button{border-radius:12px!important;font-weight:700!important}
+div[data-testid="stFileUploader"]{background:#16213e;border:1px solid #2d2d44;border-radius:16px;padding:12px}
+</style>
+""", unsafe_allow_html=True)
+
+# ── GitHub config ─────────────────────────────────────────────────────────
+GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
+GITHUB_REPO  = st.secrets["GITHUB_REPO"]
+CSV_PATH     = "enderecos_resolvidos.csv"
+BRANCH       = "main"
+GH_HEADERS   = {
+    "Authorization": f"token {GITHUB_TOKEN}",
+    "Accept": "application/vnd.github.v3+json",
+}
+
+# ── Leitura do CSV do GitHub ──────────────────────────────────────────────
+@st.cache_data(ttl=60)
+def carregar_resolvidos():
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{CSV_PATH}"
+    r = requests.get(url, headers=GH_HEADERS, timeout=10)
+    if r.status_code == 200:
+        conteudo = base64.b64decode(r.json()["content"]).decode("utf-8")
+        sha = r.json()["sha"]
+        df = pd.read_csv(io.StringIO(conteudo), dtype=str).fillna("")
+        return df, sha
+    return pd.DataFrame(columns=["telefone_e164","telefone_digits","nome",
+                                  "endereco_resolvido","observacoes","data_adicionado"]), None
+
+# ── Gravação de novo registro via GitHub API ──────────────────────────────
+def salvar_resolvido(df, sha, tel_e164, tel_digits, nome):
+    nova_linha = {
+        "telefone_e164":  tel_e164,
+        "telefone_digits": tel_digits,
+        "nome":           nome,
+        "endereco_resolvido": "",
+        "observacoes":    "",
+        "data_adicionado": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    df_novo = pd.concat([df, pd.DataFrame([nova_linha])], ignore_index=True)
+    csv_bytes = base64.b64encode(df_novo.to_csv(index=False).encode("utf-8")).decode("utf-8")
+    url  = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{CSV_PATH}"
+    body = {"message": f"update: resolvido {tel_e164}", "content": csv_bytes, "branch": BRANCH}
+    if sha:
+        body["sha"] = sha
+    r = requests.put(url, headers=GH_HEADERS, json=body, timeout=10)
+    return r.status_code in (200, 201), df_novo
+
+# ── Normalização de telefone ──────────────────────────────────────────────
+def normalizar_tel(tel):
+    digits = re.sub(r"\D", "", str(tel))
+    if not digits:
+        return "", ""
+    if digits.startswith("55") and len(digits) >= 12:
+        return f"+{digits}", digits
+    if len(digits) in (10, 11):
+        return f"+55{digits}", f"55{digits}"
+    return f"+{digits}", digits
+
+# ── Detecção de endereço incompleto ──────────────────────────────────────
+def is_incompleto(local):
+    s = str(local).strip().upper()
+    if not s or s in ("NAN", "-", ""):
+        return True
+    # LT sem número
+    if re.search(r'\bLT\s*$', s):
+        return True
+    if re.search(r'\bLT\s+[_\-]+\b', s):
+        return True
+    if re.search(r'\bLT\s+S/?N\b', s):
+        return True
+    if re.search(r'\bLT\s+0+\b', s):
+        return True
+    # Nº sem número
+    if re.search(r'\bN[°º]\s*$', s):
+        return True
+    if re.search(r'\bNUM(ERO)?\s*$', s):
+        return True
+    if re.search(r'S/?N\b', s):
+        return True
+    # QD sem LT
+    if re.search(r'\bQ[DR]?\s*\d+\b', s) and not re.search(r'\bLT\s*\d+', s):
+        return True
+    return False
+
+# ── Session state ─────────────────────────────────────────────────────────
+if "resolvidos_df" not in st.session_state:
+    st.session_state.resolvidos_df, st.session_state.resolvidos_sha = carregar_resolvidos()
+if "marcados_sessao" not in st.session_state:
+    st.session_state.marcados_sessao = set()
+
+df_res = st.session_state.resolvidos_df
+sha    = st.session_state.resolvidos_sha
+
+# conjunto de telefones já resolvidos (digits)
+tel_resolvidos = set(df_res["telefone_digits"].str.strip().tolist())
+
+# ── Interface ─────────────────────────────────────────────────────────────
+st.markdown("<h2 style='color:#fff;margin-bottom:4px'>📋 Endereços Incompletos</h2>", unsafe_allow_html=True)
+st.markdown(f"<div style='color:#8a8a9a;font-size:13px;margin-bottom:16px'>Banco: {len(df_res)} resolvidos · Sessão: {len(st.session_state.marcados_sessao)} marcados agora</div>", unsafe_allow_html=True)
+
+arquivo = st.file_uploader("📂 Suba o CSV do dia", type=["csv"], label_visibility="collapsed")
+
+if arquivo is None:
+    st.markdown("<div style='color:#8a8a9a;text-align:center;padding:40px'>Faça upload do CSV do dia para começar.</div>", unsafe_allow_html=True)
+    st.stop()
+
+# ── Processar CSV ─────────────────────────────────────────────────────────
+df = pd.read_csv(arquivo)
+df.columns = df.columns.str.strip()
+
+col_local = next((c for c in df.columns if re.search(r'local|end|quadra', c, re.I)), None)
+col_tel   = next((c for c in df.columns if re.search(r'tel|fone|celular|whats', c, re.I)), None)
+col_nome  = next((c for c in df.columns if re.search(r'nome|client', c, re.I)), None)
+col_pac   = next((c for c in df.columns if re.search(r'pacote|id|cod', c, re.I)), None)
+
+if not col_local:
+    st.error("❌ Coluna de endereço não encontrada. Colunas disponíveis: " + ", ".join(df.columns))
+    st.stop()
+
+df["_local"] = df[col_local].fillna("").astype(str).str.strip()
+df["_tel_raw"] = df[col_tel].fillna("").astype(str).str.strip() if col_tel else ""
+df["_nome"]  = df[col_nome].fillna("CLIENTE").astype(str).str.strip() if col_nome else "CLIENTE"
+df["_pac"]   = df[col_pac].fillna("SEM ID").astype(str).str.strip() if col_pac else "SEM ID"
+
+df["_incompleto"] = df["_local"].apply(is_incompleto)
+df_inc = df[df["_incompleto"]].copy()
+
+if df_inc.empty:
+    st.success("✅ Nenhum endereço incompleto encontrado no CSV!")
+    st.stop()
+
+# Classificar cada incompleto
+def classificar(row):
+    e164, digits = normalizar_tel(row["_tel_raw"])
+    ja_resolvido = digits in tel_resolvidos or digits in st.session_state.marcados_sessao
+    return pd.Series({"_e164": e164, "_digits": digits, "_resolvido": ja_resolvido})
+
+df_inc[["_e164","_digits","_resolvido"]] = df_inc.apply(classificar, axis=1)
+
+pendentes   = df_inc[~df_inc["_resolvido"]]
+ja_tratados = df_inc[df_inc["_resolvido"]]
+
+# ── Stats ─────────────────────────────────────────────────────────────────
+c1, c2, c3 = st.columns(3)
+c1.metric("Total incompletos", len(df_inc))
+c2.metric("✅ Já tratados", len(ja_tratados))
+c3.metric("⏳ Pendentes", len(pendentes))
+
+st.markdown("---")
+
+# ── Lista de pendentes ────────────────────────────────────────────────────
+if pendentes.empty:
+    st.success("🎉 Todos os incompletos já foram tratados!")
+else:
+    st.markdown(f"<h4 style='color:#ff6b6b'>⏳ Pendentes ({len(pendentes)})</h4>", unsafe_allow_html=True)
+    for _, row in pendentes.iterrows():
+        nome    = row["_nome"].upper()
+        local   = row["_local"].upper()
+        pacote  = row["_pac"]
+        e164    = row["_e164"]
+        digits  = row["_digits"]
+        p_nome  = row["_nome"].split()[0].capitalize() if row["_nome"] else "Cliente"
+
+        msg = urllib.parse.quote(
+            f"Olá {p_nome}, tudo bem? 😊\n"
+            f"Aqui é da J&T Express!\n"
+            f"Identificamos que o endereço do seu pacote *{pacote}* está incompleto: *{local}*\n"
+            f"Pode me confirmar o endereço completo? (quadra, lote, número) Obrigado! 🙏"
+        )
+        tel_wpp = re.sub(r"\D", "", e164) if e164 else ""
+        wpp_url = f"https://wa.me/{tel_wpp}?text={msg}" if tel_wpp else "#"
+
+        st.markdown(f"""
+        <div style="background:#16213e;border:1px solid #2d2d44;border-left:4px solid #ff6b6b;
+                    border-radius:14px;padding:14px;margin-bottom:10px">
+          <div style="color:#fff;font-size:15px;font-weight:700">{nome}</div>
+          <div style="color:#4285f4;font-size:13px;margin:3px 0">📍 {local}</div>
+          <div style="color:#8a8a9a;font-size:11px;font-family:monospace">📦 {pacote} · 📞 {e164 or '—'}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        col_wpp, col_ok = st.columns([2, 1])
+        with col_wpp:
+            st.markdown(f'<a href="{wpp_url}" target="_blank" style="display:block;text-align:center;background:#25d366;color:#fff;padding:11px;border-radius:12px;font-weight:700;text-decoration:none;font-size:14px">💬 Pedir endereço</a>', unsafe_allow_html=True)
+        with col_ok:
+            if st.button("✅ Resolvido", key=f"res_{digits}_{pacote}"):
+                ok, df_novo = salvar_resolvido(df_res, sha, e164, digits, row["_nome"])
+                if ok:
+                    st.session_state.resolvidos_df = df_novo
+                    st.session_state.marcados_sessao.add(digits)
+                    st.cache_data.clear()
+                    st.rerun()
+                else:
+                    st.error("Erro ao salvar. Verifique o token do GitHub.")
+
+# ── Já tratados ───────────────────────────────────────────────────────────
+if not ja_tratados.empty:
+    with st.expander(f"✅ Já tratados ({len(ja_tratados)})", expanded=False):
+        for _, row in ja_tratados.iterrows():
+            st.markdown(f"""
+            <div style="background:#0a2416;border:1px solid #1a4a2a;border-radius:12px;
+                        padding:10px 14px;margin-bottom:8px">
+              <div style="color:#00cc66;font-size:13px;font-weight:700">{row['_nome'].upper()}</div>
+              <div style="color:#8a8a9a;font-size:12px">📍 {row['_local'].upper()} · 📞 {row['_e164'] or '—'}</div>
+            </div>
+            """, unsafe_allow_html=True)
