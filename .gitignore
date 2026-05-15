@@ -27,8 +27,10 @@ outros baups/
 backup placa/
 
 # Pastas pessoais/privadas
-- RAGANAROK/
+RAGANAROK/
 - Extrator pompt para SUNO/
+MUSICA-PRODUÇÃO
+extrator_script
 
 # Arquivos de texto pessoais
 regra chat.txt
@@ -36,6 +38,7 @@ terminal VS CODE.txt
 NEWS.txt
 log_troca_pele.txt
 Novo Documento de Texto.txt
+temp_csv_dia.csv
 
 # VS Code
 .vscode/
