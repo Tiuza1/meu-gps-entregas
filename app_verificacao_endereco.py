@@ -189,10 +189,8 @@ df["_tel_raw"] = df[col_tel].fillna("").astype(str).str.strip() if col_tel else 
 df["_nome"]    = df[col_nome].fillna("CLIENTE").astype(str).str.strip() if col_nome else "CLIENTE"
 df["_pac"]     = df[col_pac].fillna("SEM ID").astype(str).str.strip() if col_pac else "SEM ID"
 
-# Incompleto = Lote/Casa E Apartamento ambos vazios
-df["_incompleto"] = df.apply(
-    lambda r: vazio(r["_lote"]) and vazio(r["_apto"]), axis=1
-)
+# Incompleto = Lote/Casa vazio (AP sozinho não basta — o AP fica dentro de um lote)
+df["_incompleto"] = df["_lote"].apply(vazio)
 df_inc = df[df["_incompleto"]].copy()
 
 if df_inc.empty:
