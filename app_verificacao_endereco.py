@@ -61,6 +61,7 @@ def carregar_resolvidos():
         sha = r.json()["sha"]
         df = pd.read_csv(io.StringIO(conteudo), dtype=str).fillna("")
         return df, sha
+    st.warning(f"⚠️ GitHub GET {r.status_code}: {r.json().get('message', r.text[:200])}")
     return pd.DataFrame(columns=["telefone_e164","telefone_digits","nome",
                                   "endereco_resolvido","observacoes","data_adicionado"]), None
 
@@ -80,8 +81,8 @@ def salvar_resolvido(df, sha, tel_e164, tel_digits, nome):
         try:
             df_novo.to_csv(LOCAL_CSV, index=False, encoding="utf-8")
         except PermissionError:
-            return False, df
-        return True, df_novo
+            return False, df, "Arquivo local bloqueado (feche o Excel)"
+        return True, df_novo, ""
 
     # Modo cloud: GitHub API
     csv_bytes = base64.b64encode(df_novo.to_csv(index=False).encode("utf-8")).decode("utf-8")
@@ -89,8 +90,13 @@ def salvar_resolvido(df, sha, tel_e164, tel_digits, nome):
     body = {"message": f"update: resolvido {tel_e164}", "content": csv_bytes, "branch": BRANCH}
     if sha:
         body["sha"] = sha
-    r = requests.put(url, headers=GH_HEADERS, json=body, timeout=10)
-    return r.status_code in (200, 201), df_novo
+    try:
+        r = requests.put(url, headers=GH_HEADERS, json=body, timeout=10)
+        ok = r.status_code in (200, 201)
+        err = "" if ok else f"GitHub {r.status_code}: {r.json().get('message', r.text[:150])}"
+        return ok, df_novo, err
+    except Exception as e:
+        return False, df_novo, str(e)
 
 # ── Normalização de telefone ──────────────────────────────────────────────
 def _ultimos7(tel):
@@ -299,14 +305,14 @@ else:
             st.markdown(f'<a href="{wpp_url}" target="_blank" style="display:block;text-align:center;background:#25d366;color:#fff;padding:11px;border-radius:12px;font-weight:700;text-decoration:none;font-size:14px">💬 Pedir endereço</a>', unsafe_allow_html=True)
         with col_ok:
             if st.button("✅ Resolvido", key=f"res_{digits}_{pacote}"):
-                ok, df_novo = salvar_resolvido(df_res, sha, e164, digits, row["_nome"])
+                ok, df_novo, err = salvar_resolvido(df_res, sha, e164, digits, row["_nome"])
                 if ok:
                     st.session_state.resolvidos_df = df_novo
                     st.session_state.marcados_sessao.add(_ultimos7(digits))
                     st.cache_data.clear()
                     st.rerun()
                 else:
-                    st.error("❌ Erro ao salvar. Se estiver rodando local, feche o arquivo enderecos_resolvidos.csv no Excel antes de marcar como resolvido.")
+                    st.error(f"❌ Erro ao salvar: {err}")
 
 # ── Já tratados ───────────────────────────────────────────────────────────
 if not ja_tratados.empty:
