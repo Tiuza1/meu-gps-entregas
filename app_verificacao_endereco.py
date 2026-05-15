@@ -154,24 +154,45 @@ if arquivo is None:
 df = pd.read_csv(arquivo)
 df.columns = df.columns.str.strip()
 
-col_local = next((c for c in df.columns if re.search(r'local|end|quadra', c, re.I)), None)
-col_compl = next((c for c in df.columns if re.search(r'compl|lote|casa|numero|n[°º]|num\b', c, re.I)), None)
-col_tel   = next((c for c in df.columns if re.search(r'tel|fone|celular|whats', c, re.I)), None)
-col_nome  = next((c for c in df.columns if re.search(r'nome|client', c, re.I)), None)
-col_pac   = next((c for c in df.columns if re.search(r'pacote|id|cod', c, re.I)), None)
+# Colunas fixas do CSV
+COL_RUA  = "Rua"
+COL_LOTE = "Lote/Casa"
+COL_APTO = "Apartamento"
 
-if not col_local:
+col_tel  = next((c for c in df.columns if re.search(r'tel|fone|celular|whats', c, re.I)), None)
+col_nome = next((c for c in df.columns if re.search(r'nome|client', c, re.I)), None)
+col_pac  = next((c for c in df.columns if re.search(r'pacote|id|cod', c, re.I)), None)
+
+# Valida se as colunas de endereço existem
+cols_faltando = [c for c in [COL_RUA, COL_LOTE, COL_APTO] if c not in df.columns]
+if cols_faltando:
+    st.warning(f"⚠️ Colunas não encontradas: {cols_faltando}. Colunas do CSV: {list(df.columns)}")
+    # Fallback: usa detecção automática se faltar coluna
+    col_rua  = next((c for c in df.columns if re.search(r'rua|local|end|quadra', c, re.I)), None)
+    col_lote = next((c for c in df.columns if re.search(r'lote|casa|compl|num', c, re.I)), None)
+    col_apto = next((c for c in df.columns if re.search(r'apt|apto|ap\b', c, re.I)), None)
+else:
+    col_rua, col_lote, col_apto = COL_RUA, COL_LOTE, COL_APTO
+
+if not col_rua:
     st.error("❌ Coluna de endereço não encontrada. Colunas: " + ", ".join(df.columns))
     st.stop()
 
-df["_local"]   = df[col_local].fillna("").astype(str).str.strip()
-df["_compl"]   = df[col_compl].fillna("").astype(str).str.strip() if col_compl else ""
-df["_end_full"] = (df["_local"] + " " + df["_compl"]).str.strip()
+def vazio(val):
+    return str(val).strip().upper() in ("", "NAN", "NONE", "-", "N/A")
+
+df["_rua"]     = df[col_rua].fillna("").astype(str).str.strip()
+df["_lote"]    = df[col_lote].fillna("").astype(str).str.strip() if col_lote else ""
+df["_apto"]    = df[col_apto].fillna("").astype(str).str.strip() if col_apto else ""
+df["_end_full"] = (df["_rua"] + " " + df["_lote"] + " " + df["_apto"]).str.strip()
 df["_tel_raw"] = df[col_tel].fillna("").astype(str).str.strip() if col_tel else ""
 df["_nome"]    = df[col_nome].fillna("CLIENTE").astype(str).str.strip() if col_nome else "CLIENTE"
 df["_pac"]     = df[col_pac].fillna("SEM ID").astype(str).str.strip() if col_pac else "SEM ID"
 
-df["_incompleto"] = df["_end_full"].apply(is_incompleto)
+# Incompleto = Lote/Casa E Apartamento ambos vazios
+df["_incompleto"] = df.apply(
+    lambda r: vazio(r["_lote"]) and vazio(r["_apto"]), axis=1
+)
 df_inc = df[df["_incompleto"]].copy()
 
 if df_inc.empty:
