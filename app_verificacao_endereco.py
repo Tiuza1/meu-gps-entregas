@@ -87,6 +87,11 @@ def salvar_resolvido(df, sha, tel_e164, tel_digits, nome):
     return r.status_code in (200, 201), df_novo
 
 # ── Normalização de telefone ──────────────────────────────────────────────
+def _ultimos7(tel):
+    """Retorna os últimos 7 dígitos do telefone para cruzamento flexível."""
+    digits = re.sub(r"\D", "", str(tel))
+    return digits[-7:] if len(digits) >= 7 else digits
+
 def normalizar_tel(tel):
     digits = re.sub(r"\D", "", str(tel))
     if not digits:
@@ -138,7 +143,7 @@ df_res = st.session_state.resolvidos_df
 sha    = st.session_state.resolvidos_sha
 
 # conjunto de telefones já resolvidos (digits)
-tel_resolvidos = set(df_res["telefone_digits"].str.strip().tolist())
+tel_resolvidos = set(_ultimos7(t) for t in df_res["telefone_digits"].tolist() if str(t).strip())
 
 # ── Interface ─────────────────────────────────────────────────────────────
 st.markdown("<h2 style='color:#fff;margin-bottom:4px'>📋 Endereços Incompletos</h2>", unsafe_allow_html=True)
@@ -200,7 +205,7 @@ if df_inc.empty:
 # Classificar cada incompleto
 def classificar(row):
     e164, digits = normalizar_tel(row["_tel_raw"])
-    ja_resolvido = digits in tel_resolvidos or digits in st.session_state.marcados_sessao
+    ja_resolvido = _ultimos7(digits) in tel_resolvidos or _ultimos7(digits) in st.session_state.marcados_sessao
     return pd.Series({"_e164": e164, "_digits": digits, "_resolvido": ja_resolvido})
 
 df_inc[["_e164","_digits","_resolvido"]] = df_inc.apply(classificar, axis=1)
@@ -263,7 +268,7 @@ else:
                 ok, df_novo = salvar_resolvido(df_res, sha, e164, digits, row["_nome"])
                 if ok:
                     st.session_state.resolvidos_df = df_novo
-                    st.session_state.marcados_sessao.add(digits)
+                    st.session_state.marcados_sessao.add(_ultimos7(digits))
                     st.cache_data.clear()
                     st.rerun()
                 else:
