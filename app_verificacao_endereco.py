@@ -98,10 +98,15 @@ def normalizar_tel(tel):
     return f"+{digits}", digits
 
 # ── Detecção de endereço incompleto ──────────────────────────────────────
-def is_incompleto(local):
-    s = str(local).strip().upper()
+def is_incompleto(end_completo):
+    s = str(end_completo).strip().upper()
     if not s or s in ("NAN", "-", ""):
         return True
+    # Tem LOTE ou CASA com número → completo
+    if re.search(r'\bLOTE\s+\d+', s):
+        return False
+    if re.search(r'\bCASA\s+\d+', s):
+        return False
     # LT sem número
     if re.search(r'\bLT\s*$', s):
         return True
@@ -111,15 +116,15 @@ def is_incompleto(local):
         return True
     if re.search(r'\bLT\s+0+\b', s):
         return True
-    # Nº sem número
+    # Nº / NUM sem número
     if re.search(r'\bN[°º]\s*$', s):
         return True
     if re.search(r'\bNUM(ERO)?\s*$', s):
         return True
     if re.search(r'S/?N\b', s):
         return True
-    # QD sem LT
-    if re.search(r'\bQ[DR]?\s*\d+\b', s) and not re.search(r'\bLT\s*\d+', s):
+    # QD sem LT ou LOTE
+    if re.search(r'\bQ[DR]?\s*\d+\b', s) and not re.search(r'\b(LT|LOTE)\s*\d+', s):
         return True
     return False
 
@@ -150,20 +155,23 @@ df = pd.read_csv(arquivo)
 df.columns = df.columns.str.strip()
 
 col_local = next((c for c in df.columns if re.search(r'local|end|quadra', c, re.I)), None)
+col_compl = next((c for c in df.columns if re.search(r'compl|lote|casa|numero|n[°º]|num\b', c, re.I)), None)
 col_tel   = next((c for c in df.columns if re.search(r'tel|fone|celular|whats', c, re.I)), None)
 col_nome  = next((c for c in df.columns if re.search(r'nome|client', c, re.I)), None)
 col_pac   = next((c for c in df.columns if re.search(r'pacote|id|cod', c, re.I)), None)
 
 if not col_local:
-    st.error("❌ Coluna de endereço não encontrada. Colunas disponíveis: " + ", ".join(df.columns))
+    st.error("❌ Coluna de endereço não encontrada. Colunas: " + ", ".join(df.columns))
     st.stop()
 
-df["_local"] = df[col_local].fillna("").astype(str).str.strip()
+df["_local"]   = df[col_local].fillna("").astype(str).str.strip()
+df["_compl"]   = df[col_compl].fillna("").astype(str).str.strip() if col_compl else ""
+df["_end_full"] = (df["_local"] + " " + df["_compl"]).str.strip()
 df["_tel_raw"] = df[col_tel].fillna("").astype(str).str.strip() if col_tel else ""
-df["_nome"]  = df[col_nome].fillna("CLIENTE").astype(str).str.strip() if col_nome else "CLIENTE"
-df["_pac"]   = df[col_pac].fillna("SEM ID").astype(str).str.strip() if col_pac else "SEM ID"
+df["_nome"]    = df[col_nome].fillna("CLIENTE").astype(str).str.strip() if col_nome else "CLIENTE"
+df["_pac"]     = df[col_pac].fillna("SEM ID").astype(str).str.strip() if col_pac else "SEM ID"
 
-df["_incompleto"] = df["_local"].apply(is_incompleto)
+df["_incompleto"] = df["_end_full"].apply(is_incompleto)
 df_inc = df[df["_incompleto"]].copy()
 
 if df_inc.empty:
@@ -196,7 +204,7 @@ else:
     st.markdown(f"<h4 style='color:#ff6b6b'>⏳ Pendentes ({len(pendentes)})</h4>", unsafe_allow_html=True)
     for _, row in pendentes.iterrows():
         nome    = row["_nome"].upper()
-        local   = row["_local"].upper()
+        local   = row["_end_full"].upper()
         pacote  = row["_pac"]
         e164    = row["_e164"]
         digits  = row["_digits"]
