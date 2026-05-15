@@ -35,8 +35,12 @@ import os
 LOCAL_CSV = CSV_PATH  # mesmo nome, lido do diretório de trabalho
 
 def _modo_local():
-    """Retorna True se consegue usar o arquivo local (não precisa de GitHub API)."""
-    return os.path.exists(LOCAL_CSV)
+    """Retorna True apenas se não houver token do GitHub configurado."""
+    try:
+        _ = st.secrets["GITHUB_TOKEN"]
+        return False  # token disponível → sempre usa GitHub API
+    except Exception:
+        return os.path.exists(LOCAL_CSV)  # sem token → usa arquivo local
 
 # ── Leitura do CSV ────────────────────────────────────────────────────────
 @st.cache_data(ttl=60)
