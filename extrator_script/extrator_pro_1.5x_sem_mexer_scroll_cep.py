@@ -181,6 +181,10 @@ def rodar_extrator_v6(lista_negra):
                     x1, y1, x2, y2 = get_coords(meu_btn.get('bounds'))
                     cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
 
+                    # Marca como processado ANTES de tentar o telefone,
+                    # evitando duplicata caso o pacote reapareça ao rolar a tela
+                    processados.add(p_id)
+
                     print(f"[*] Extraindo: {nome_cli} | {quadra} | {cep}")
                     tel = capturar_com_tentativas(cx, cy, nome_cli)
 
@@ -191,7 +195,8 @@ def rodar_extrator_v6(lista_negra):
                             if os.path.getsize(arquivo_csv) == 0:
                                 writer.writerow(["Nome", "Pacote", "Telefone", "Local", "CEP", "Rua", "Lote/Casa", "Apartamento"])
                             writer.writerow([nome_cli, p_id, tel, quadra, cep, rua, lote, apto])
-                        processados.add(p_id)
+                    else:
+                        print(f"[!] Falha ao capturar tel de {nome_cli} — pulando (não duplica)")
 
             # Scroll curto para manter a precisão
             subprocess.run("adb shell input swipe 500 1200 500 800 900", shell=True)
