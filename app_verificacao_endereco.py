@@ -223,27 +223,35 @@ else:
     st.markdown(f"<h4 style='color:#ff6b6b'>⏳ Pendentes ({len(pendentes)})</h4>", unsafe_allow_html=True)
     for _, row in pendentes.iterrows():
         nome    = row["_nome"].upper()
-        local   = row["_end_full"].upper()
+        rua     = row["_rua"].upper()
+        lote    = row["_lote"].upper()
+        apto    = row["_apto"].upper()
         pacote  = row["_pac"]
         e164    = row["_e164"]
         digits  = row["_digits"]
         p_nome  = row["_nome"].split()[0].capitalize() if row["_nome"] else "Cliente"
+        end_msg = row["_end_full"].upper()
 
         msg = urllib.parse.quote(
             f"Olá {p_nome}, tudo bem? 😊\n"
             f"Aqui é da J&T Express!\n"
-            f"Identificamos que o endereço do seu pacote *{pacote}* está incompleto: *{local}*\n"
+            f"Identificamos que o endereço do seu pacote *{pacote}* está incompleto: *{end_msg}*\n"
             f"Pode me confirmar o endereço completo? (quadra, lote, número) Obrigado! 🙏"
         )
         tel_wpp = re.sub(r"\D", "", e164) if e164 else ""
         wpp_url = f"https://wa.me/{tel_wpp}?text={msg}" if tel_wpp else "#"
 
+        lote_html  = f'<div style="color:#ff6b6b;font-size:12px;margin-top:4px">🏠 <b>Lote/Casa:</b> {lote if lote else "—  ⚠️ vazio"}</div>'
+        apto_html  = f'<div style="color:#aaa;font-size:12px">🚪 <b>Apto:</b> {apto if apto else "—"}</div>' if apto else ""
+
         st.markdown(f"""
         <div style="background:#16213e;border:1px solid #2d2d44;border-left:4px solid #ff6b6b;
                     border-radius:14px;padding:14px;margin-bottom:10px">
           <div style="color:#fff;font-size:15px;font-weight:700">{nome}</div>
-          <div style="color:#4285f4;font-size:13px;margin:3px 0">📍 {local}</div>
-          <div style="color:#8a8a9a;font-size:11px;font-family:monospace">📦 {pacote} · 📞 {e164 or '—'}</div>
+          <div style="color:#4285f4;font-size:13px;margin:3px 0">📍 <b>Rua/Quadra:</b> {rua or '—'}</div>
+          {lote_html}
+          {apto_html}
+          <div style="color:#8a8a9a;font-size:11px;font-family:monospace;margin-top:6px">📦 {pacote} · 📞 {e164 or '—'}</div>
         </div>
         """, unsafe_allow_html=True)
 
