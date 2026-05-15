@@ -271,7 +271,7 @@ else:
             f"Olá {p_nome}, tudo bem?\n"
             f"Aqui é da J&T Express!\n"
             f"Identificamos que o endereço do seu pacote *{pacote}* está incompleto.\n"
-            f"Pode me confirmar o endereço completo? (quadra, lote, número) Obrigado! 🙏🏽"
+            f"Pode me confirmar o endereço completo? (quadra, rua, lote/casa) Obrigado! 🙏🏽"
         )
         tel_wpp = re.sub(r"\D", "", e164) if e164 else ""
         wpp_url = f"https://wa.me/{tel_wpp}?text={msg}" if tel_wpp else "#"
