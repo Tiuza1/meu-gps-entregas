@@ -71,6 +71,20 @@ def extrair_logradouro(texto):
     m = re.search(r'\b(AP|APTO|APT)\.?\s*(\d+)', texto, re.IGNORECASE)
     if m:
         apto = f"{m.group(1).upper()} {m.group(2)}"
+
+    # ── Dedução de lote por número solto (1–23) ───────────────────────────
+    # Só tenta se não achou lote pelos padrões normais
+    if not lote:
+        mascara = texto
+        # Remove o CEP para não confundir (ex: 72853-017 → XXXXX)
+        mascara = re.sub(r'7285\d[-.\s]?\d{3}', 'XXXXX', mascara)
+        # Remove número da quadra (ex: "Quadra 17" → "QUADRA__")
+        mascara = re.sub(r'(QUADRA|QD|QR|CONJUNTO|CJ|CONJ)\.?\s*\d+', 'QUADRA__', mascara, flags=re.IGNORECASE)
+        # Procura número solto entre 1 e 23 (com zero à esquerda ou não)
+        m_solto = re.search(r'(?<!\d)\b(0?[1-9]|1\d|2[0-3])\b(?!\d)', mascara)
+        if m_solto:
+            lote = f"LOTE {int(m_solto.group(1))}"  # int() remove zero à esquerda
+
     return rua, lote, apto
 
 def extrair_do_discador():
