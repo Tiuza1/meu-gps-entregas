@@ -73,8 +73,10 @@ def salvar_resolvido(df, sha, tel_e164, tel_digits, nome):
     df_novo = pd.concat([df, pd.DataFrame([nova_linha])], ignore_index=True)
 
     if sha == "local":
-        # Modo local: grava direto no disco
-        df_novo.to_csv(LOCAL_CSV, index=False, encoding="utf-8")
+        try:
+            df_novo.to_csv(LOCAL_CSV, index=False, encoding="utf-8")
+        except PermissionError:
+            return False, df
         return True, df_novo
 
     # Modo cloud: GitHub API
@@ -133,11 +135,15 @@ def is_incompleto(end_completo):
         return True
     return False
 
+CSV_DIA = "temp_csv_dia.csv"
+
 # ── Session state ─────────────────────────────────────────────────────────
 if "resolvidos_df" not in st.session_state:
     st.session_state.resolvidos_df, st.session_state.resolvidos_sha = carregar_resolvidos()
 if "marcados_sessao" not in st.session_state:
     st.session_state.marcados_sessao = set()
+if "confirmar_exclusao" not in st.session_state:
+    st.session_state.confirmar_exclusao = False
 
 df_res = st.session_state.resolvidos_df
 sha    = st.session_state.resolvidos_sha
@@ -149,14 +155,38 @@ tel_resolvidos = set(_ultimos7(t) for t in df_res["telefone_digits"].tolist() if
 st.markdown("<h2 style='color:#fff;margin-bottom:4px'>📋 Endereços Incompletos</h2>", unsafe_allow_html=True)
 st.markdown(f"<div style='color:#8a8a9a;font-size:13px;margin-bottom:16px'>Banco: {len(df_res)} resolvidos · Sessão: {len(st.session_state.marcados_sessao)} marcados agora</div>", unsafe_allow_html=True)
 
-arquivo = st.file_uploader("📂 Suba o CSV do dia", type=["csv"], label_visibility="collapsed")
+# ── CSV do dia com persistência ───────────────────────────────────────────
+if os.path.exists(CSV_DIA):
+    col_info, col_lixo = st.columns([5, 1])
+    with col_info:
+        st.markdown("<div style='color:#4caf50;font-size:13px;padding:6px 0'>📄 CSV do dia carregado</div>", unsafe_allow_html=True)
+    with col_lixo:
+        if st.button("🗑️", help="Excluir CSV do dia"):
+            st.session_state.confirmar_exclusao = True
 
-if arquivo is None:
-    st.markdown("<div style='color:#8a8a9a;text-align:center;padding:40px'>Faça upload do CSV do dia para começar.</div>", unsafe_allow_html=True)
-    st.stop()
+    if st.session_state.confirmar_exclusao:
+        st.warning("⚠️ Tem certeza que quer excluir o CSV do dia?")
+        col_sim, col_nao = st.columns(2)
+        with col_sim:
+            if st.button("✅ Sim, excluir", type="primary"):
+                os.remove(CSV_DIA)
+                st.session_state.confirmar_exclusao = False
+                st.rerun()
+        with col_nao:
+            if st.button("❌ Cancelar"):
+                st.session_state.confirmar_exclusao = False
+                st.rerun()
+
+    df = pd.read_csv(CSV_DIA)
+else:
+    arquivo = st.file_uploader("📂 Suba o CSV do dia", type=["csv"], label_visibility="collapsed")
+    if arquivo is None:
+        st.markdown("<div style='color:#8a8a9a;text-align:center;padding:40px'>Faça upload do CSV do dia para começar.</div>", unsafe_allow_html=True)
+        st.stop()
+    df = pd.read_csv(arquivo)
+    df.to_csv(CSV_DIA, index=False)
 
 # ── Processar CSV ─────────────────────────────────────────────────────────
-df = pd.read_csv(arquivo)
 df.columns = df.columns.str.strip()
 
 # Colunas fixas do CSV
@@ -272,7 +302,7 @@ else:
                     st.cache_data.clear()
                     st.rerun()
                 else:
-                    st.error("Erro ao salvar. Verifique o token do GitHub.")
+                    st.error("❌ Erro ao salvar. Se estiver rodando local, feche o arquivo enderecos_resolvidos.csv no Excel antes de marcar como resolvido.")
 
 # ── Já tratados ───────────────────────────────────────────────────────────
 if not ja_tratados.empty:
@@ -282,6 +312,6 @@ if not ja_tratados.empty:
             <div style="background:#0a2416;border:1px solid #1a4a2a;border-radius:12px;
                         padding:10px 14px;margin-bottom:8px">
               <div style="color:#00cc66;font-size:13px;font-weight:700">{row['_nome'].upper()}</div>
-              <div style="color:#8a8a9a;font-size:12px">📍 {row['_local'].upper()} · 📞 {row['_e164'] or '—'}</div>
+              <div style="color:#8a8a9a;font-size:12px">📍 {row['_rua'].upper()} · 📞 {row['_e164'] or '—'}</div>
             </div>
             """, unsafe_allow_html=True)
